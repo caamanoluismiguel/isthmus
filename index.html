@@ -533,40 +533,6 @@
     <a class="btn primary" href="#kpis">Ver KPIs</a>
   </div>
 
-  <script>
-    'use strict';
-    // Accesibilidad: focus de salto rápido con tecla "/"
-    document.addEventListener('keydown', function(e){
-      if(e.key === '/'){
-        e.preventDefault();
-        var firstTab = document.querySelector('nav.tabs a');
-        if(firstTab){ firstTab.focus(); }
-      }
-    });
-  </script>
-  <script>
-    'use strict';
-    // Resalte del tab activo según scroll
-    (function(){
-      var links = Array.prototype.slice.call(document.querySelectorAll('nav.tabs a'));
-      var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
-      if(!('IntersectionObserver' in window)) return; // soporte básico
-      var io = new IntersectionObserver(function(entries){
-        entries.forEach(function(entry){
-          var id = '#' + entry.target.id;
-          var link = document.querySelector('nav.tabs a[href="'+id+'"]');
-          if(link){
-            if(entry.isIntersecting){
-              links.forEach(function(l){ l.classList.remove('active'); });
-              link.classList.add('active');
-            }
-          }
-        });
-      },{rootMargin:'-40% 0px -55% 0px', threshold:0});
-      sections.forEach(function(sec){ io.observe(sec); });
-    })();
-  </script>
-  
   <!-- ===== Editor liviano para agregar/quitar/editar ===== -->
   <div id="editorBar" aria-label="Barra de edición" style="position:fixed;left:20px;bottom:20px;display:flex;gap:8px;align-items:center;background:#0b2b3c;color:white;padding:10px 12px;border-radius:12px;box-shadow:0 10px 30px rgba(3,20,33,.18);z-index:60">
     <button id="btnToggleEdit" class="btn" style="background:#09c199;color:#032a23;border:none">Modo edición: OFF</button>
@@ -608,191 +574,270 @@
     .drag-handle{cursor:grab}
     .drag-ghost{opacity:.6}
   </style>
-  <script>
-    'use strict';
+
+  <!-- CÓDIGO DE LA APP INCRUSTADO COMO TEXTO (evita errores al usar document.write en viewers) -->
+  <script id="app-code" type="application/json">(function(){
+    // Accesibilidad: focus de salto rápido con tecla "/"
+    document.addEventListener('keydown', function(evt){
+      if(evt.key === '/'){
+        evt.preventDefault();
+        var firstTab = document.querySelector('nav.tabs a');
+        if(firstTab){ firstTab.focus(); }
+      }
+    });
+
+    // Resalte del tab activo según scroll
     (function(){
-      // Utilidades sin Unicode problemático en literales
-      function txt(s){ return document.createTextNode(s); }
-      var $ = function(s,root){ return (root||document).querySelector(s); };
-      var $$ = function(s,root){ return Array.prototype.slice.call((root||document).querySelectorAll(s)); };
-      var btnEdit = $('#btnToggleEdit');
-      var btnAdd = $('#btnAddSection');
-      var btnSave = $('#btnSave');
-      var btnStore = $('#btnStore');
-      var btnLoad = $('#btnLoad');
-      var btnChip = $('#btnChipMode');
-      var edit = false;
-
-      function setEditable(scope, on){
-        $$('.subtitle,.callout,.tag,.pill,h1,h2,h3,h4,p,li,td,th,span.lead', scope)
-          .forEach(function(el){ el.setAttribute('contenteditable', on? 'true':'false'); });
-      }
-
-      function addControls(sec){
-        if (sec.querySelector('.section-controls')) return;
-        var bar = document.createElement('div');
-        bar.className = 'section-controls';
-        var drag = document.createElement('button'); drag.textContent = '\u2195 Arrastrar'; drag.className='drag-handle';
-        var dup = document.createElement('button'); dup.textContent = 'Duplicar';
-        var del = document.createElement('button'); del.textContent = 'Eliminar'; del.style.color='#b00020';
-        dup.addEventListener('click',function(){ sec.after(sec.cloneNode(true)); wireDragAndControls(); });
-        del.addEventListener('click',function(){ if(confirm('¿Eliminar esta sección?')) sec.remove(); });
-        bar.appendChild(drag); bar.appendChild(dup); bar.appendChild(del);
-        sec.insertBefore(bar, sec.firstChild);
-      }
-
-      function removeControls(sec){
-        var bar = sec.querySelector('.section-controls');
-        if(bar) bar.remove();
-      }
-
-      function toggleEdit(){
-        edit = !edit; document.body.classList.toggle('edit', edit);
-        btnEdit.textContent = 'Modo edición: ' + (edit? 'ON':'OFF');
-        $$('.block').forEach(function(sec){
-          sec.setAttribute('draggable', edit);
-          if(edit){ addControls(sec); setEditable(sec,true); }
-          else { removeControls(sec); setEditable(sec,false); }
-        });
-      }
-
-      function addSection(){
-        var tpl = $('#tpl-generic-section');
-        if(!tpl) return;
-        var node = tpl.content.cloneNode(true);
-        $('main.container').appendChild(node);
-        wireDragAndControls();
-      }
-
-      function wireDragAndControls(){
-        // Drag & drop para reordenar secciones
-        var dragSrc=null;
-        $$('.block').forEach(function(sec){
-          sec.addEventListener('dragstart', function(e){ if(!edit) return e.preventDefault(); dragSrc=sec; sec.classList.add('drag-ghost'); e.dataTransfer.effectAllowed='move'; });
-          sec.addEventListener('dragend', function(){ sec.classList.remove('drag-ghost'); });
-          sec.addEventListener('dragover', function(e){ if(!edit) return; e.preventDefault(); });
-          sec.addEventListener('drop', function(e){ if(!edit || !dragSrc) return; e.preventDefault(); var rect=sec.getBoundingClientRect(); var before=(e.clientY-rect.top) < rect.height/2; sec.parentNode.insertBefore(dragSrc, before? sec: sec.nextSibling); });
-        });
-      }
-
-      function buildCleanHTML(){
-        var clone = document.documentElement.cloneNode(true);
-        // Quitar elementos de edición y atributos efímeros
-        clone.querySelectorAll('#editorBar,.section-controls').forEach(function(n){ n.remove(); });
-        clone.querySelectorAll('[contenteditable]').forEach(function(n){ n.removeAttribute('contenteditable'); });
-        clone.querySelectorAll('[draggable]').forEach(function(n){ n.removeAttribute('draggable'); });
-        var _b = clone.querySelector('body'); if(_b){ _b.classList.remove('edit'); _b.removeAttribute('data-chip'); }
-        var tpl = clone.querySelector('#tpl-generic-section'); if(tpl) tpl.remove();
-        var html = '<!DOCTYPE html>\n' + clone.outerHTML; // \n escapado para evitar quiebres
-        return html;
-      }
-
-      function downloadClean(){
-        try{
-          var html = buildCleanHTML();
-          var blob = new Blob([html], {type:'text/html;charset=utf-8'});
-
-          // Preferir File System Access API si está disponible
-          if(window.showSaveFilePicker){
-            (async function(){
-              try{
-                var handle = await window.showSaveFilePicker({
-                  suggestedName: 'index.html',
-                  types: [{ description: 'HTML', accept: {'text/html':['.html','.htm']} }]
-                });
-                var writable = await handle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-              }catch(err){
-                // Fallback a descarga si el usuario cancela el picker
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url; a.download = 'index.html';
-                document.body.appendChild(a); a.click(); a.remove();
-                setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
-              }
-            })();
-          } else {
-            // Fallback clásico: crear enlace temporal y simular click
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url; a.download = 'index.html';
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+      var links = Array.prototype.slice.call(document.querySelectorAll('nav.tabs a'));
+      var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+      if(!('IntersectionObserver' in window)) return;
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          var id = '#' + entry.target.id;
+          var link = document.querySelector('nav.tabs a[href="'+id+'"]');
+          if(link && entry.isIntersecting){
+            links.forEach(function(l){ l.classList.remove('active'); });
+            link.classList.add('active');
           }
-        }catch(err){
-          console.error('Descarga falló:', err);
-          alert('No se pudo descargar el archivo. Revisa la consola para más detalles.');
-        }
-      }
-
-      function storeLocal(){
-        var main = $('main.container');
-        if(!main) return;
-        localStorage.setItem('isthmus_plan_main_html', main.innerHTML);
-        alert('Guardado localmente.');
-      }
-      function loadLocal(){
-        var html = localStorage.getItem('isthmus_plan_main_html');
-        if(!html) return alert('No hay versión local almacenada.');
-        $('main.container').innerHTML = html;
-        wireDragAndControls();
-        if(edit) toggleEdit(); // reset state
-      }
-
-      // Eventos
-      btnEdit.addEventListener('click', toggleEdit);
-      btnAdd.addEventListener('click', addSection);
-      btnSave.addEventListener('click', downloadClean);
-      btnStore.addEventListener('click', storeLocal);
-      btnLoad.addEventListener('click', loadLocal);
-
-      // Chip mode toggle
-      function applyChipMode(mode){
-        document.body.setAttribute('data-chip', mode);
-        localStorage.setItem('isthmus_chip_mode', mode);
-        if(btnChip) btnChip.textContent = 'Chips: ' + (mode==='tint' ? 'tint' : 'sólido');
-      }
-      if(btnChip){
-        btnChip.addEventListener('click', function(){
-          var current = document.body.getAttribute('data-chip')==='tint' ? 'tint' : 'solid';
-          applyChipMode(current==='tint' ? 'solid' : 'tint');
         });
-      }
-      var savedChip = localStorage.getItem('isthmus_chip_mode');
-      applyChipMode(savedChip || 'solid');
+      },{rootMargin:'-40% 0px -55% 0px', threshold:0});
+      sections.forEach(function(sec){ io.observe(sec); });
+    })();
 
-      // Inicializar
+    // ====== Editor ======
+    var $ = function(s,root){ return (root||document).querySelector(s); };
+    var $$ = function(s,root){ return Array.prototype.slice.call((root||document).querySelectorAll(s)); };
+    var btnEdit = $('#btnToggleEdit');
+    var btnAdd = $('#btnAddSection');
+    var btnSave = $('#btnSave');
+    var btnStore = $('#btnStore');
+    var btnLoad = $('#btnLoad');
+    var btnChip = $('#btnChipMode');
+    var edit = false;
+
+    function setEditable(scope, on){
+      $$('.subtitle,.lead,.callout,.tag,.pill,.chip,.fstep,h1,h2,h3,h4,p,li,td,th', scope)
+        .forEach(function(el){ el.setAttribute('contenteditable', on? 'true':'false'); });
+    }
+    function addControls(sec){
+      if (sec.querySelector('.section-controls')) return;
+      var bar = document.createElement('div');
+      bar.className = 'section-controls';
+      var drag = document.createElement('button'); drag.textContent = '\u2195 Arrastrar'; drag.className='drag-handle';
+      var idb = document.createElement('button'); idb.textContent = 'ID';
+      var dup = document.createElement('button'); dup.textContent = 'Duplicar';
+      var del = document.createElement('button'); del.textContent = 'Eliminar'; del.style.color='#b00020';
+      idb.addEventListener('click', function(){
+        var current = sec.id || '';
+        var nv = prompt('Nuevo id de sección (sin espacios):', current);
+        if(nv){ sec.id = nv.trim().replace(/\s+/g,'-').toLowerCase(); buildNavFromSections(); }
+      });
+      dup.addEventListener('click',function(){ sec.after(sec.cloneNode(true)); wireDragAndControls(); buildNavFromSections(); });
+      del.addEventListener('click',function(){ if(confirm('¿Eliminar esta sección?')){ sec.remove(); buildNavFromSections(); } });
+      bar.appendChild(drag); bar.appendChild(idb); bar.appendChild(dup); bar.appendChild(del);
+      sec.insertBefore(bar, sec.firstChild);
+    }
+    function removeControls(sec){ var bar = sec.querySelector('.section-controls'); if(bar) bar.remove(); }
+
+    function toggleEdit(){
+      edit = !edit; document.body.classList.toggle('edit', edit);
+      btnEdit.textContent = 'Modo edición: ' + (edit? 'ON':'OFF');
+      $$('.block').forEach(function(sec){
+        sec.setAttribute('draggable', edit);
+        if(edit){ addControls(sec); setEditable(sec,true); }
+        else { removeControls(sec); setEditable(sec,false); }
+      });
+    }
+    function addSection(){
+      var tpl = $('#tpl-generic-section');
+      if(!tpl) return;
+      var node = tpl.content.cloneNode(true);
+      $('main.container').appendChild(node);
       wireDragAndControls();
+      buildNavFromSections();
+    }
+    function wireDragAndControls(){
+      var dragSrc=null;
+      $$('.block').forEach(function(sec){
+        sec.addEventListener('dragstart', function(ev){ if(!edit) return ev.preventDefault(); dragSrc=sec; sec.classList.add('drag-ghost'); ev.dataTransfer.effectAllowed='move'; });
+        sec.addEventListener('dragend', function(){ sec.classList.remove('drag-ghost'); });
+        sec.addEventListener('dragover', function(ev){ if(!edit) return; ev.preventDefault(); });
+        sec.addEventListener('drop', function(ev){ if(!edit || !dragSrc) return; ev.preventDefault(); var rect=sec.getBoundingClientRect(); var before=(ev.clientY-rect.top) < rect.height/2; sec.parentNode.insertBefore(dragSrc, before? sec: sec.nextSibling); buildNavFromSections(); });
+      });
+    }
 
-      // --- Smoke tests (visibles en consola) ---
+    // --- Navegación dinámica y utilidades ---
+    function slugify(txt){
+      var s = (txt||'').toString().toLowerCase();
+      s = s.replace(/ +/g,'-');
+      s = s.replace(/[^a-z0-9-]/g,'');
+      s = s.replace(/-+/g,'-');
+      return s;
+    }
+    function chipColorForSection(sec){
+      var chip = sec.querySelector('.chip');
+      if(!chip) return '';
+      var colors = ['sky','amber','mint','violet','sea','ink'];
+      var parts = (chip.className||'').split(' ');
+      for(var i=0;i<parts.length;i++){ if(colors.indexOf(parts[i])>-1) return parts[i]; }
+      return '';
+    }
+    function buildNavFromSections(){
+      var nav = document.querySelector('nav.tabs');
+      if(!nav) return;
+      var frag = document.createDocumentFragment();
+      $$('.block').forEach(function(sec){
+        var h2 = sec.querySelector('h2');
+        if(!h2) return;
+        if(!sec.id){ sec.id = slugify(h2.textContent)||('sec-'+Math.random().toString(36).slice(2,7)); }
+        var a = document.createElement('a');
+        a.href = '#'+sec.id;
+        a.textContent = h2.textContent.trim();
+        var color = chipColorForSection(sec);
+        if(color) a.setAttribute('data-color', color);
+        frag.appendChild(a);
+      });
+      nav.innerHTML = '';
+      nav.appendChild(frag);
+    }
+    var chipPalette = ['sky','amber','mint','violet','sea','ink'];
+    function cycleChip(el){
+      var colors = chipPalette;
+      var parts = (el.className||'').split(' ');
+      var cur = '';
+      for(var i=0;i<parts.length;i++){ if(colors.indexOf(parts[i])>-1){ cur = parts[i]; break; } }
+      var idx = colors.indexOf(cur);
+      var next = colors[(idx+1+colors.length)%colors.length];
+      for(var j=0;j<colors.length;j++){ el.classList.remove(colors[j]); }
+      el.classList.add(next);
+      buildNavFromSections();
+    }
+    document.addEventListener('click', function(ev){
+      if(!edit) return;
+      var t = ev.target;
+      if(t.classList && t.classList.contains('chip')){ ev.preventDefault(); cycleChip(t); }
+    });
+    document.addEventListener('input', function(ev){
+      if(!edit) return;
+      if(ev.target && ev.target.tagName==='H2' && ev.target.getAttribute('contenteditable')==='true'){ buildNavFromSections(); }
+    });
+
+    function buildCleanHTML(){
+      var clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('#editorBar,.section-controls').forEach(function(n){ n.remove(); });
+      clone.querySelectorAll('[contenteditable]').forEach(function(n){ n.removeAttribute('contenteditable'); });
+      clone.querySelectorAll('[draggable]').forEach(function(n){ n.removeAttribute('draggable'); });
+      var _b = clone.querySelector('body'); if(_b){ _b.classList.remove('edit'); _b.removeAttribute('data-chip'); }
+      var tpl = clone.querySelector('#tpl-generic-section'); if(tpl) tpl.remove();
+      var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+      return html;
+    }
+    function downloadClean(){
       try{
-        var results=[];
-        results.push({test:'buttons exist', pass: !!(btnEdit&&btnAdd&&btnSave&&btnStore&&btnLoad&&btnChip)});
-        var before=document.body.classList.contains('edit');
-        toggleEdit();
-        var mid=document.body.classList.contains('edit');
-        toggleEdit();
-        var after=document.body.classList.contains('edit');
-        results.push({test:'toggleEdit toggles', pass: mid!==before && after===before});
-        var countBefore = $$('.block').length;
-        addSection();
+        var html = buildCleanHTML();
+        var blob = new Blob([html], {type:'text/html;charset=utf-8'});
+        if(window.showSaveFilePicker){
+          (async function(){
+            try{
+              var handle = await window.showSaveFilePicker({
+                suggestedName: 'index.html',
+                types: [{ description: 'HTML', accept: {'text/html':['.html','.htm']} }]
+              });
+              var writable = await handle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+            }catch(err){
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement('a');
+              a.href = url; a.download = 'index.html';
+              document.body.appendChild(a); a.click(); a.remove();
+              setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+            }
+          })();
+        } else {
+          var url2 = URL.createObjectURL(blob);
+          var a2 = document.createElement('a');
+          a2.href = url2; a2.download = 'index.html';
+          document.body.appendChild(a2); a2.click(); a2.remove();
+          setTimeout(function(){ URL.revokeObjectURL(url2); }, 1500);
+        }
+      }catch(err){
+        console.error('Descarga falló:', err);
+        alert('No se pudo descargar el archivo. Revisa la consola para más detalles.');
+      }
+    }
+    function storeLocal(){
+      var main = $('main.container');
+      if(!main) return;
+      localStorage.setItem('isthmus_plan_main_html', main.innerHTML);
+      alert('Guardado localmente.');
+    }
+    function loadLocal(){
+      var html = localStorage.getItem('isthmus_plan_main_html');
+      if(!html) return alert('No hay versión local almacenada.');
+      $('main.container').innerHTML = html;
+      wireDragAndControls();
+      buildNavFromSections();
+      if(edit) toggleEdit();
+    }
+
+    // Eventos
+    btnEdit.addEventListener('click', toggleEdit);
+    btnAdd.addEventListener('click', addSection);
+    btnSave.addEventListener('click', downloadClean);
+    btnStore.addEventListener('click', storeLocal);
+    btnLoad.addEventListener('click', loadLocal);
+
+    // Chip mode toggle (solo para vista; export siempre sólido)
+    function applyChipMode(mode){
+      document.body.setAttribute('data-chip', mode);
+      localStorage.setItem('isthmus_chip_mode', mode);
+      if(btnChip) btnChip.textContent = 'Chips: ' + (mode==='tint' ? 'tint' : 'sólido');
+    }
+    if(btnChip){
+      btnChip.addEventListener('click', function(){
+        var current = document.body.getAttribute('data-chip')==='tint' ? 'tint' : 'solid';
+        applyChipMode(current==='tint' ? 'solid' : 'tint');
+      });
+    }
+    var savedChip = localStorage.getItem('isthmus_chip_mode');
+    applyChipMode(savedChip || 'solid');
+
+    // Inicializar
+    wireDragAndControls();
+    buildNavFromSections();
+
+    // --- Smoke tests ---
+    try{
+      var results=[];
+      results.push({test:'buttons exist', pass: !!(btnEdit&&btnAdd&&btnSave&&btnStore&&btnLoad&&btnChip)});
+      var before=document.body.classList.contains('edit');
+      toggleEdit();
+      var mid=document.body.classList.contains('edit');
+      toggleEdit();
+      var after=document.body.classList.contains('edit');
+      results.push({test:'toggleEdit toggles', pass: mid!==before && after===before});
+      var countBefore = $$('.block').length;
+      addSection();
+      var countAfter = $$('.block').length;
+      var last = $$('.block').pop(); if(last) last.remove();
+      results.push({test:'addSection adds', pass: countAfter===countBefore+1});
+      storeLocal();
+      results.push({test:'storeLocal', pass: !!localStorage.getItem('isthmus_plan_main_html')});
+      var built = buildCleanHTML();
+      results.push({test:'buildCleanHTML ok', pass: typeof built==='string' && built.indexOf('<!DOCTYPE html>')===0 && built.indexOf('id="editorBar"')===-1 && built.indexOf('contenteditable=')===-1});
+      var navCount = document.querySelectorAll('nav.tabs a').length;
+      var secCount = $$('.block').length;
+      results.push({test:'nav reflects sections', pass: navCount===secCount});
+      console.table(results);
+    }catch(err){ console.warn('Smoke tests error:', err); }
+  })();</script>
+
+  <!-- Bootstrap mínimo: crea un módulo desde el bloque JSON para evitar errores de document.write en viewers -->
+  <script>(function(){try{var el=document.getElementById('app-code');if(!el)return;var code=el.textContent;var blob=new Blob([code],{type:'text/javascript'});var url=URL.createObjectURL(blob);var s=document.createElement('script');s.type='module';s.src=url;el.insertAdjacentElement('afterend',s);}catch(err){console.error('Boot failed:',err);}})();</script>
+</body>
         var countAfter = $$('.block').length;
         var last = $$('.block').pop(); if(last) last.remove();
         results.push({test:'addSection adds', pass: countAfter===countBefore+1});
         storeLocal();
-        results.push({test:'storeLocal', pass: !!localStorage.getItem('isthmus_plan_main_html')});
-        var built = buildCleanHTML();
-        results.push({test:'buildCleanHTML returns string & strips editor', pass: typeof built==='string' && built.indexOf('<!DOCTYPE html>')===0 && built.indexOf('id="editorBar"')===-1 && built.indexOf('contenteditable=')===-1});
-        // Nuevo: sanity de descarga (no dispara descarga real)
-        var testBlob = new Blob(['<html></html>'], {type:'text/html'});
-        var url = URL.createObjectURL(testBlob);
-        results.push({test:'blob url created', pass: typeof url==='string' && url.indexOf('blob:')===0});
-        URL.revokeObjectURL(url);
-        console.table(results);
-      }catch(err){ console.warn('Smoke tests error:', err); }
-
-    })();
-  </script>
-</body>
-</html>
+        results.push({test:'storeLocal', pass: !!
