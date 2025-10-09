@@ -34,7 +34,7 @@
       background:#fff; border-radius:12px; overflow:hidden;
       box-shadow:0 16px 36px rgba(0,0,0,.28);
     }
-    /* El web component ocupa todo el shell (no usamos Tailwind) */
+    /* El web component ocupa todo el shell */
     openai-chatkit{ display:block; width:100%; height:100%; min-height:100%; }
 
     @media (max-width:480px){
@@ -52,7 +52,6 @@
 
   <script>
     (function(){
-      // Tu endpoint de sesión en Railway
       var SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
 
       // ID por dispositivo (persistente)
@@ -73,7 +72,6 @@
       var fab   = document.getElementById("ck-fab");
       var configured = false;
 
-      // Pide/renueva el client_secret al backend
       function getClientSecret(currentClientSecret){
         return fetch(SESSION_URL, {
           method: "POST",
@@ -81,21 +79,20 @@
           body: JSON.stringify({
             user: deviceId,
             currentClientSecret: currentClientSecret || null
-            // Si prefieres, puedes incluir workflow aquí:
+            // Si lo prefieres, puedes enviar el workflow aquí:
             // workflow: { id: "wf_68e7cc18d10c8190a69b17e589c1899e01de395587bb64d1" }
           })
         }).then(function(r){
           if(!r.ok){ return r.text().then(function(t){ throw new Error("No se pudo obtener client_secret: "+r.status+" "+t); }); }
-        return r.json();
+          return r.json();
         }).then(function(j){ return j.client_secret; });
       }
 
-      // Espera a que el Web Component esté registrado por el runtime async
       function ensureComponentReady(){
         if (window.customElements && customElements.whenDefined) {
           return customElements.whenDefined('openai-chatkit');
         }
-        return new Promise(function(res){ setTimeout(res, 400); }); // fallback simple
+        return new Promise(function(res){ setTimeout(res, 400); });
       }
 
       function mountIfNeeded(){
@@ -104,16 +101,14 @@
           chatEl.setOptions({
             api: { getClientSecret: getClientSecret },
             locale: "es",
-            // ⚠️ Campos válidos (no usar title/subtitle)
-            composer: { placeholder: "Escribe aquí tu consulta de admisiones…" }, /* ver docs de composer */ /* :contentReference[oaicite:1]{index=1} */
             startScreen: {
               greeting: "Hola, soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
               prompts: [
-                { name: "Programas", prompt: "Cuéntame sobre Arquitectura, Arquitectura Interior, Diseño Industrial y Comunicación Visual", icon: "sparkles" },
-                { name: "Visita", prompt: "Quiero coordinar una visita al campus", icon: "calendar" },
-                { name: "Costos", prompt: "Quiero recibir los costos por correo", icon: "mail" }
+                { label: "Programas", prompt: "Quiero información sobre los programas de Arquitectura, Arquitectura Interior, Diseño Industrial y Comunicación Visual" },
+                { label: "Visita",    prompt: "Quiero coordinar una visita al campus o una llamada (L–V, 08:00–17:00)" },
+                { label: "Costos",    prompt: "Quiero recibir los costos por correo electrónico" }
               ]
-            } /* ver docs de startScreen */ /* :contentReference[oaicite:2]{index=2} */
+            }
           });
           configured = true;
         });
@@ -133,6 +128,7 @@
   </script>
 </body>
 </html>
+
 
 
 
