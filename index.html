@@ -15,7 +15,6 @@
   <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%230f5ea8"/><text x="32" y="42" font-size="28" text-anchor="middle" fill="white">💬</text></svg>' />
 
   <style>
-    /* Página vacía, sólo el flotante y el chat */
     html,body{height:100%;margin:0}
     body{background:#f6f8fb;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;color:#0b2b3c}
 
@@ -36,9 +35,7 @@
       box-shadow:0 16px 36px rgba(0,0,0,.28);
     }
     /* El web component ocupa todo el shell (no usamos Tailwind) */
-    openai-chatkit{
-      display:block; width:100%; height:100%; min-height:100%;
-    }
+    openai-chatkit{ display:block; width:100%; height:100%; min-height:100%; }
 
     @media (max-width:480px){
       #ck-shell{ right:0; left:0; bottom:0; width:100vw; height:70vh; border-radius:0; }
@@ -89,7 +86,7 @@
           })
         }).then(function(r){
           if(!r.ok){ return r.text().then(function(t){ throw new Error("No se pudo obtener client_secret: "+r.status+" "+t); }); }
-          return r.json();
+        return r.json();
         }).then(function(j){ return j.client_secret; });
       }
 
@@ -107,11 +104,16 @@
           chatEl.setOptions({
             api: { getClientSecret: getClientSecret },
             locale: "es",
-            // (opcional) pantalla inicial
+            // ⚠️ Campos válidos (no usar title/subtitle)
+            composer: { placeholder: "Escribe aquí tu consulta de admisiones…" }, /* ver docs de composer */ /* :contentReference[oaicite:1]{index=1} */
             startScreen: {
-              title: "Asesor de Admisiones · ISTHMUS",
-              subtitle: "¿Cómo te llamas? Te ayudo con programas, requisitos, visitas y envío de costos por correo."
-            }
+              greeting: "Hola, soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
+              prompts: [
+                { name: "Programas", prompt: "Cuéntame sobre Arquitectura, Arquitectura Interior, Diseño Industrial y Comunicación Visual", icon: "sparkles" },
+                { name: "Visita", prompt: "Quiero coordinar una visita al campus", icon: "calendar" },
+                { name: "Costos", prompt: "Quiero recibir los costos por correo", icon: "mail" }
+              ]
+            } /* ver docs de startScreen */ /* :contentReference[oaicite:2]{index=2} */
           });
           configured = true;
         });
@@ -131,6 +133,7 @@
   </script>
 </body>
 </html>
+
 
 
 
