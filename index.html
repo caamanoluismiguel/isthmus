@@ -828,9 +828,15 @@
 <script type="module">
   import { ChatKit, useChatKit } from "https://cdn.jsdelivr.net/npm/@openai/chatkit-react/+esm";
 
-  const SESSION_URL = "https://TU-PROYECTO.vercel.app/api/chatkit/session"; // <- actualiza esta URL
+  // ⛳️ ACTUALIZA ESTA URL cuando tengas tu dominio público de Railway
+  const SESSION_URL = "https://<TU-DOMINIO>.up.railway.app/api/chatkit/session";
+
   const deviceIdKey = "ck_device_id";
-  const deviceId = localStorage.getItem(deviceIdKey) || (crypto.randomUUID(), localStorage.setItem(deviceIdKey, crypto.randomUUID()), localStorage.getItem(deviceIdKey));
+  let deviceId = localStorage.getItem(deviceIdKey);
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem(deviceIdKey, deviceId);
+  }
 
   async function getClientSecret(existing){
     const r = await fetch(SESSION_URL, {
@@ -838,6 +844,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: deviceId })
     });
+    if (!r.ok) throw new Error("No se pudo crear la sesión de ChatKit");
     const { client_secret } = await r.json();
     return client_secret;
   }
@@ -846,15 +853,15 @@
   const container = document.getElementById("chat-container");
   let mounted = false;
 
-  // Botón abre/cierra
-  document.getElementById("chat-launcher").addEventListener("click", async () => {
+  document.getElementById("chat-launcher").addEventListener("click", () => {
     if (!mounted) {
       ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
       mounted = true;
     }
-    container.style.display = (container.style.display === "none" || !container.style.display) ? "block" : "none";
+    const show = container.style.display !== "block";
+    container.style.display = show ? "block" : "none";
+    container.setAttribute("aria-hidden", String(!show));
   });
 </script>
-
-
-</body></html>
+</body>
+</html>
