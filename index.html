@@ -1,5 +1,27 @@
 <!DOCTYPE html>
 <html lang="es"><head>
+  <!-- ChatKit runtime -->
+<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+
+<!-- (Opcional) Verificación de dominio si tu panel te dio domain_pk -->
+<meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4">
+<style>
+  /* Botón flotante */
+  #chat-launcher {
+    position: fixed; right: 20px; bottom: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    border: none; cursor: pointer; z-index: 9999;
+    box-shadow: 0 6px 20px rgba(0,0,0,.2);
+  }
+  #chat-container {
+    position: fixed; right: 20px; bottom: 88px; 
+    width: 360px; height: 600px; z-index: 9998; display: none;
+    background: #fff; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 12px 30px rgba(0,0,0,.25);
+  }
+  @media (max-width: 480px){ #chat-container{width:100vw;height:70vh;right:0;left:0;bottom:0;border-radius:0;}}
+</style>
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Isthmus · Plan de Mercadeo Educativo</title>
@@ -798,4 +820,41 @@
         var last = $$('.block').pop(); if(last) last.remove();
         results.push({test:'addSection adds', pass: countAfter===countBefore+1});
         storeLocal();
-        results.push({test:'storeLocal', pass: !!</body></html>
+        results.push({test:'storeLocal', pass: !!
+<!-- Contenedor del chat + botón -->
+<div id="chat-container" aria-hidden="true"></div>
+<button id="chat-launcher" aria-label="Abrir chat">💬</button>
+
+<script type="module">
+  import { ChatKit, useChatKit } from "https://cdn.jsdelivr.net/npm/@openai/chatkit-react/+esm";
+
+  const SESSION_URL = "https://TU-PROYECTO.vercel.app/api/chatkit/session"; // <- actualiza esta URL
+  const deviceIdKey = "ck_device_id";
+  const deviceId = localStorage.getItem(deviceIdKey) || (crypto.randomUUID(), localStorage.setItem(deviceIdKey, crypto.randomUUID()), localStorage.getItem(deviceIdKey));
+
+  async function getClientSecret(existing){
+    const r = await fetch(SESSION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: deviceId })
+    });
+    const { client_secret } = await r.json();
+    return client_secret;
+  }
+
+  const { control } = useChatKit({ api: { getClientSecret } });
+  const container = document.getElementById("chat-container");
+  let mounted = false;
+
+  // Botón abre/cierra
+  document.getElementById("chat-launcher").addEventListener("click", async () => {
+    if (!mounted) {
+      ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
+      mounted = true;
+    }
+    container.style.display = (container.style.display === "none" || !container.style.display) ? "block" : "none";
+  });
+</script>
+
+
+</body></html>
