@@ -9,17 +9,27 @@ const app = express();
 // ===== CONFIG =====
 const PORT = process.env.PORT || 8080;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const WORKFLOW_ID = process.env.WORKFLOW_ID || "";
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://www.semeocurrioalgo.com";
+
+// Acepta cualquiera de los dos nombres
+const WORKFLOW_ID =
+  process.env.WORKFLOW_ID ||
+  process.env.CHATKIT_WORKFLOW_ID ||
+  "";
+
+// Permite ALLOWED_ORIGIN o CORS_ORIGIN
+const ALLOWED_ORIGIN =
+  process.env.ALLOWED_ORIGIN ||
+  process.env.CORS_ORIGIN ||
+  "https://www.semeocurrioalgo.com";
 
 // ===== MIDDLEWARE =====
 app.use(cors({
   origin: (origin, cb) => {
-    // Permite SSR/tools (origin null) y tu dominio
+    // Permite SSR/tools (origin null) y tu dominio configurado
     if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
     return cb(new Error("CORS bloqueado para " + origin));
   },
-  methods: ["GET","POST","OPTIONS"],
+  methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"]
 }));
 app.use(express.json());
@@ -28,35 +38,29 @@ app.use(express.json());
 app.get("/", (_, res) => res.type("text/plain").send("ok"));
 app.get("/health", (_, res) => res.type("text/plain").send("ok"));
 
-// ===== UTIL: loggear config (sin exponer key completa) =====
+// ===== UTIL =====
 function maskKey(k){ return k ? (k.slice(0,7) + "…" + k.slice(-4)) : "(vacía)"; }
 
 // ===== SESIÓN CHATKIT =====
 app.post("/api/chatkit/session", async (req, res) => {
   try {
-    // Validación de entorno
     if (!OPENAI_API_KEY) return res.status(500).json({ error: "Falta OPENAI_API_KEY" });
-    if (!WORKFLOW_ID)   return res.status(500).json({ error: "Falta WORKFLOW_ID" });
+    if (!WORKFLOW_ID)   return res.status(500).json({ error: "Falta WORKFLOW_ID/CHATKIT_WORKFLOW_ID" });
 
-    // user puede venir como userId o user
     const userId = (req.body && (req.body.user || req.body.userId)) || `anon-${Date.now()}`;
 
-    // DEBUG: log mínimo (seguro)
     console.log("[/api/chatkit/session] user:", userId);
     console.log("[env] WORKFLOW_ID:", WORKFLOW_ID, "| OPENAI_API_KEY:", maskKey(OPENAI_API_KEY));
     console.log("[env] ALLOWED_ORIGIN:", ALLOWED_ORIGIN);
 
-    const payload = {
-      workflow: { id: WORKFLOW_ID },
-      user: userId
-    };
+    const payload = { workflow: { id: WORKFLOW_ID }, user: userId };
 
     const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "OpenAI-Beta": "chatkit_beta=v1"
+        "OpenAI-Beta": "chatkit_beta=v1" // requerido para ChatKit
       },
       body: JSON.stringify(payload)
     });
@@ -68,13 +72,13 @@ app.post("/api/chatkit/session", async (req, res) => {
     }
 
     let data;
-    try { data = JSON.parse(text); } catch(parseErr){
-      console.error("[OpenAI] JSON parse error:", parseErr, "raw:", text);
+    try { data = JSON.parse(text); } catch (e) {
+      console.error("[OpenAI] JSON parse error:", e, "raw:", text);
       return res.status(500).json({ error: "Bad JSON from OpenAI", raw: text });
     }
 
     if (!data.client_secret) {
-      console.error("[OpenAI] Missing client_secret in response:", data);
+      console.error("[OpenAI] Missing client_secret:", data);
       return res.status(500).json({ error: "Missing client_secret from OpenAI", raw: data });
     }
 
