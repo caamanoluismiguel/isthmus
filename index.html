@@ -1,132 +1,119 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Asesor de Admisiones · ISTHMUS</title>
+  <title>Demo · Isthmus Admissions Agent</title>
 
-  <!-- ChatKit runtime -->
+  <!-- Verificación de dominio (del panel de OpenAI) -->
+  <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4">
+
+  <!-- Runtime de ChatKit: registra <openai-chatkit> como Web Component -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
-  <!-- Verificación de dominio (si aplica) -->
-  <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
-
-  <!-- Favicon inline para evitar 404 -->
-  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23111"/><text x="32" y="42" font-size="28" text-anchor="middle" fill="white">💬</text></svg>' />
 
   <style>
-    :root{ --bg:#f6f8fb; --ink:#0b2b3c; }
-    *{ box-sizing:border-box }
-    html, body{ height:100%; margin:0 }
-    body{
-      background:var(--bg);
-      color:var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial;
+    /* Botón flotante y contenedor del chat */
+    #ck-fab {
+      position: fixed; right: 20px; bottom: 20px; z-index: 9999;
+      width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0,0,0,.2); background: #0f5ea8; color: #fff; font-size: 22px;
     }
-    .page{ min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
-    .hint{ font-size:16px; opacity:.7; text-align:center; user-select:none; }
-
-    /* Botón flotante */
-    #chat-launcher{
-      position:fixed; right:20px; bottom:20px;
-      width:56px; height:56px; border-radius:50%;
-      border:none; cursor:pointer; z-index:9999;
-      background:#111; color:#fff; font-size:22px; line-height:1;
-      box-shadow:0 8px 24px rgba(0,0,0,.25);
+    #ck-shell {
+      position: fixed; right: 20px; bottom: 88px; z-index: 9998;
+      width: 360px; height: 600px; display: none;
+      background: #fff; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0,0,0,.25);
     }
-    #chat-launcher:focus{ outline:3px solid rgba(15,94,168,.4); outline-offset:2px; }
-
-    /* Contenedor del chat */
-    #chat-container{
-      position:fixed; right:20px; bottom:88px;
-      width:360px; height:600px; z-index:9998; display:none;
-      background:#fff; border-radius:12px; overflow:hidden;
-      box-shadow:0 16px 36px rgba(0,0,0,.28);
-    }
-    @media (max-width:480px){
-      #chat-container{ right:0; left:0; bottom:0; width:100vw; height:70vh; border-radius:0; }
+    @media (max-width: 480px){
+      #ck-shell { width: 100vw; height: 70vh; right: 0; left: 0; bottom: 0; border-radius: 0; }
     }
   </style>
 </head>
 <body>
-  <noscript>Activa JavaScript para usar el chat.</noscript>
+  <!-- Tu página puede tener contenido normal aquí… -->
 
-  <div class="page">
-    <div class="hint" id="boot-hint">Página lista. Toca el botón 💬 para abrir el chat.</div>
+  <!-- Contenedor del chat + botón -->
+  <div id="ck-shell" aria-hidden="true">
+    <!-- El web component se inserta aquí -->
+    <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
   </div>
-
-  <div id="chat-container" aria-hidden="true"></div>
-  <button id="chat-launcher" aria-label="Abrir chat de admisiones" title="Chatear">💬</button>
+  <button id="ck-fab" aria-label="Abrir chat">💬</button>
 
   <script>
     (function(){
-      // URL de tu API en Railway
-      var SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
+      const SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session"; // ← tu endpoint en Railway
+      const deviceIdKey = "ck_device_id";
+      let deviceId = localStorage.getItem(deviceIdKey);
+      if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem(deviceIdKey, deviceId); }
 
-      // ID por dispositivo (persistente)
-      var KEY = "ck_device_id";
-      var deviceId = null;
-      try {
-        deviceId = localStorage.getItem(KEY);
-        if(!deviceId){
-          deviceId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + "-" + Math.random().toString(36).slice(2));
-          localStorage.setItem(KEY, deviceId);
-        }
-      } catch(_) {
-        deviceId = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
-      }
+      const shell = document.getElementById("ck-shell");
+      const chatEl = document.getElementById("isthmus-chat");
+      const fab   = document.getElementById("ck-fab");
+      let configured = false;
 
-      function whenReady(fn){
-        if (window.ChatKit) return fn();
-        setTimeout(function(){ whenReady(fn); }, 80);
-      }
-
-      function getClientSecret(){
-        return fetch(SESSION_URL, {
+      // Pide/renueva el client_secret al backend (patrón recomendado)
+      async function getClientSecret(currentClientSecret){
+        const res = await fetch(SESSION_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: deviceId })
-        }).then(function(r){
-          if(!r.ok){ return r.text().then(function(t){ throw new Error("No se pudo crear la sesión: " + r.status + " " + t); }); }
-          return r.json();
-        }).then(function(json){
-          return json.client_secret;
+          // Si tu server necesita el workflow_id explícito, añádelo aquí:
+          body: JSON.stringify({
+            user: deviceId,
+            currentClientSecret // para refresh si aplica
+            // workflow: { id: "wf_68e7cc18d10c8190a69b17e589c1899e01de395587bb64d1" }
+          })
         });
+        if (!res.ok) {
+          const text = await res.text().catch(()=> "");
+          throw new Error("No se pudo obtener client_secret: " + res.status + " " + text);
+        }
+        const data = await res.json();
+        return data.client_secret;
       }
 
-      document.addEventListener("DOMContentLoaded", function(){
-        var container = document.getElementById("chat-container");
-        var fab = document.getElementById("chat-launcher");
-        var mounted = false;
-        var open = false;
-        var instance = null;
+      // Espera a que el Web Component esté registrado por el runtime
+      async function ensureComponentReady(){
+        if (window.customElements && customElements.whenDefined) {
+          await customElements.whenDefined('openai-chatkit');
+        } else {
+          // Fallback sencillo: esperar unos ms al script async
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
 
-        whenReady(function(){
-          fab.addEventListener("click", function(){
-            if(!mounted){
-              try{
-                instance = window.ChatKit({
-                  api: { getClientSecret: getClientSecret },
-                  className: "h-[600px] w-[360px]"
-                });
-                instance.mount(container);
-                mounted = true;
-              } catch(e){
-                console.warn("Error al montar ChatKit:", e);
-                container.style.display = "block";
-                container.innerHTML = "<div style='padding:16px;font-family:ui-sans-serif'><strong>No se pudo cargar el chat.</strong><br/>Revisa la consola y la URL de sesión.</div>";
-                return;
-              }
-            }
-            open = !open;
-            container.style.display = open ? "block" : "none";
-            container.setAttribute("aria-hidden", String(!open));
-          });
+      async function mountIfNeeded(){
+        if (configured) return;
+        await ensureComponentReady();
+
+        // Configura el componente (web component) con el método de auth
+        // Puedes pasar también opciones de UI/idioma (locale) y theming.
+        chatEl.setOptions({
+          api: { getClientSecret },         // ← patrón oficial
+          locale: "es",
+          startScreen: {
+            title: "Asesor de Admisiones · ISTHMUS",
+            subtitle: "¿Cómo te llamas? Puedo ayudarte con programas, requisitos, visitas y envío de costos por correo."
+          }
         });
-      });
+        configured = true;
+      }
+
+      fab.onclick = async () => {
+        try {
+          await mountIfNeeded();
+          const show = shell.style.display !== "block";
+          shell.style.display = show ? "block" : "none";
+          shell.setAttribute("aria-hidden", String(!show));
+        } catch (err) {
+          console.error(err);
+          alert("No pude iniciar el chat. Revisa la consola del navegador.");
+        }
+      };
     })();
   </script>
 </body>
 </html>
+
 
 
 
