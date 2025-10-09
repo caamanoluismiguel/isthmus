@@ -7,7 +7,11 @@
 
   <!-- ChatKit runtime -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+  <!-- Verificación de dominio (si aplica) -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
+
+  <!-- Favicon inline para evitar 404 -->
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23111"/><text x="32" y="42" font-size="28" text-anchor="middle" fill="white">💬</text></svg>' />
 
   <style>
     :root{ --bg:#f6f8fb; --ink:#0b2b3c; }
@@ -16,12 +20,11 @@
     body{
       background:var(--bg);
       color:var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial;
     }
-    .page{
-      min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px;
-    }
+    .page{ min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
     .hint{ font-size:16px; opacity:.7; text-align:center; user-select:none; }
+
     /* Botón flotante */
     #chat-launcher{
       position:fixed; right:20px; bottom:20px;
@@ -31,6 +34,7 @@
       box-shadow:0 8px 24px rgba(0,0,0,.25);
     }
     #chat-launcher:focus{ outline:3px solid rgba(15,94,168,.4); outline-offset:2px; }
+
     /* Contenedor del chat */
     #chat-container{
       position:fixed; right:20px; bottom:88px;
@@ -47,7 +51,7 @@
   <noscript>Activa JavaScript para usar el chat.</noscript>
 
   <div class="page">
-    <div class="hint" id="boot-hint">Página lista. Haz clic en el botón 💬 para abrir el chat.</div>
+    <div class="hint" id="boot-hint">Página lista. Toca el botón 💬 para abrir el chat.</div>
   </div>
 
   <div id="chat-container" aria-hidden="true"></div>
@@ -55,81 +59,75 @@
 
   <script>
     (function(){
-      const SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
-      const KEY = "ck_device_id";
-      let deviceId = localStorage.getItem(KEY);
-      if(!deviceId){
-        deviceId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
-        localStorage.setItem(KEY, deviceId);
-      }
+      // URL de tu API en Railway
+      var SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
 
-      function log(){ try{ console.log.apply(console, arguments); }catch(_){ }
-      function warn(){ try{ console.warn.apply(console, arguments); }catch(_){ } }
-
-      async function getClientSecret(){
-        const r = await fetch(SESSION_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: deviceId })
-        });
-        if(!r.ok){
-          warn("Fallo al crear sesión ChatKit:", r.status, await r.text().catch(()=>null));
-          throw new Error("No se pudo crear la sesión de ChatKit");
+      // ID por dispositivo (persistente)
+      var KEY = "ck_device_id";
+      var deviceId = null;
+      try {
+        deviceId = localStorage.getItem(KEY);
+        if(!deviceId){
+          deviceId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + "-" + Math.random().toString(36).slice(2));
+          localStorage.setItem(KEY, deviceId);
         }
-        const { client_secret } = await r.json();
-        return client_secret;
+      } catch(_) {
+        deviceId = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
       }
 
       function whenReady(fn){
         if (window.ChatKit) return fn();
-        setTimeout(()=>whenReady(fn), 60);
+        setTimeout(function(){ whenReady(fn); }, 80);
+      }
+
+      function getClientSecret(){
+        return fetch(SESSION_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: deviceId })
+        }).then(function(r){
+          if(!r.ok){ return r.text().then(function(t){ throw new Error("No se pudo crear la sesión: " + r.status + " " + t); }); }
+          return r.json();
+        }).then(function(json){
+          return json.client_secret;
+        });
       }
 
       document.addEventListener("DOMContentLoaded", function(){
-        const container = document.getElementById("chat-container");
-        const fab = document.getElementById("chat-launcher");
-        const boot = document.getElementById("boot-hint");
-        let mounted = false, open = false, instance = null;
-
-        // Siempre muestra el botón y el texto de pista:
-        if(!fab) warn("No existe #chat-launcher en el DOM");
-        if(!container) warn("No existe #chat-container en el DOM");
-        if(boot) boot.textContent = "Listo. Toca 💬 para abrir el chat.";
+        var container = document.getElementById("chat-container");
+        var fab = document.getElementById("chat-launcher");
+        var mounted = false;
+        var open = false;
+        var instance = null;
 
         whenReady(function(){
-          fab.addEventListener("click", async function(){
-            try{
-              if(!mounted){
+          fab.addEventListener("click", function(){
+            if(!mounted){
+              try{
                 instance = window.ChatKit({
-                  api: { getClientSecret },
+                  api: { getClientSecret: getClientSecret },
                   className: "h-[600px] w-[360px]"
                 });
                 instance.mount(container);
                 mounted = true;
+              } catch(e){
+                console.warn("Error al montar ChatKit:", e);
+                container.style.display = "block";
+                container.innerHTML = "<div style='padding:16px;font-family:ui-sans-serif'><strong>No se pudo cargar el chat.</strong><br/>Revisa la consola y la URL de sesión.</div>";
+                return;
               }
-              open = !open;
-              container.style.display = open ? "block" : "none";
-              container.setAttribute("aria-hidden", String(!open));
-            }catch(e){
-              warn("Error al montar ChatKit:", e);
-              // Fallback visual si fallara ChatKit
-              container.style.display = "block";
-              container.innerHTML = "<div style='padding:16px;font-family:ui-sans-serif'><strong>No se pudo cargar el chat.</strong><br>Revisa la consola y la URL de sesión.</div>";
             }
+            open = !open;
+            container.style.display = open ? "block" : "none";
+            container.setAttribute("aria-hidden", String(!open));
           });
         });
-
-        // Por si ChatKit nunca carga (ej. bloqueado por red): deja el botón activo igualmente
-        setTimeout(function(){
-          if(!window.ChatKit){
-            warn("ChatKit no cargó aún (CDN). El botón seguirá visible.");
-          }
-        }, 2000);
       });
     })();
   </script>
 </body>
 </html>
+
 
 
 
