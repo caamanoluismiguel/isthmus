@@ -1,12 +1,11 @@
 {
   "name": "isthmus-server",
-  "private": true,
-  "engines": { "node": ">=18" },
-  "scripts": {
-    "start": "node server.js"
-  },
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "googleapis": "^118.0.0"
   }
 }
