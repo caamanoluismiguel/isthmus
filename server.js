@@ -1,103 +1,204 @@
 // server.js
-"use strict";
-
 const express = require("express");
 const cors = require("cors");
+const { google } = require("googleapis");
 
+// ---------- ENV ----------
+const {
+  PORT = 8080,
+  OPENAI_API_KEY,
+  CHATKIT_WORKFLOW_ID,
+  ALLOWED_ORIGIN,            // p.ej. https://www.semeocurrioalgo.com
+  ALLOWED_ORIGINS_EXTRA,     // opcional: coma-separada
+  SHEET_ID,                  // ID del Google Sheet
+  GOOGLE_CLIENT_EMAIL,
+  GOOGLE_PRIVATE_KEY,
+  GOOGLE_PROJECT_ID,         // no se usa en código, pero útil tenerlo
+  CALENDAR_ID,               // ID del Calendar donde crear eventos
+} = process.env;
+
+// ---------- APP ----------
 const app = express();
-
-// ===== CONFIG =====
-const PORT = process.env.PORT || 8080;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-
-// Acepta ambos nombres
-const WORKFLOW_ID =
-  process.env.WORKFLOW_ID ||
-  process.env.CHATKIT_WORKFLOW_ID ||
-  "";
-
-const ALLOWED_ORIGIN =
-  process.env.ALLOWED_ORIGIN ||
-  process.env.CORS_ORIGIN ||
-  "https://www.semeocurrioalgo.com";
-
-// ===== MIDDLEWARE GLOBAL =====
 app.use(express.json());
 
-// ===== RUTAS ABIERTAS (sin CORS) =====
-app.get("/", (_, res) => res.type("text/plain").send("ok"));
-app.get("/health", (_, res) => res.type("text/plain").send("ok"));
+// CORS: permite tu dominio público y extras
+const allowList = [
+  ...(ALLOWED_ORIGIN ? [ALLOWED_ORIGIN] : []),
+  ...(ALLOWED_ORIGINS_EXTRA ? ALLOWED_ORIGINS_EXTRA.split(",").map(s => s.trim()) : []),
+];
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin) return cb(null, true); // allow curl / direct
+      if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+  })
+);
 
-// ===== CORS SOLO PARA /api =====
-const corsOptions = {
-  origin: (origin, cb) => {
-    // Permite SSR/tools (origin null) y tu dominio público
-    if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
-    return cb(new Error("CORS bloqueado para " + origin));
-  },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-};
-const api = express.Router();
-api.use(cors(corsOptions));          // CORS aplicado solo a /api
-api.use(express.json());
+// ---------- HEALTH ----------
+app.get("/", (_, res) => res.send("ok"));
+app.get("/health", (_, res) => res.send("ok"));
 
-// Utilidad para esconder la key en logs
-function maskKey(k){ return k ? (k.slice(0,7) + "…" + k.slice(-4)) : "(vacía)"; }
-
-// ===== SESIÓN CHATKIT =====
-api.post("/chatkit/session", async (req, res) => {
+// ---------- CHATKIT: crea sesión ----------
+app.post("/api/chatkit/session", async (req, res) => {
   try {
-    if (!OPENAI_API_KEY) return res.status(500).json({ error: "Falta OPENAI_API_KEY" });
-    if (!WORKFLOW_ID)   return res.status(500).json({ error: "Falta WORKFLOW_ID/CHATKIT_WORKFLOW_ID" });
-
-    const userId = (req.body && (req.body.user || req.body.userId)) || `anon-${Date.now()}`;
-
-    console.log("[/api/chatkit/session] user:", userId);
-    console.log("[env] WORKFLOW_ID:", WORKFLOW_ID, "| OPENAI_API_KEY:", maskKey(OPENAI_API_KEY));
-    console.log("[env] ALLOWED_ORIGIN/CORS_ORIGIN:", ALLOWED_ORIGIN);
-
-    const payload = { workflow: { id: WORKFLOW_ID }, user: userId };
-
-    const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
+    const user = (req.body && (req.body.user || req.body.userId)) || "anon";
+    const r = await fetch("https://api.openai.com/v1/chatkit/sessions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "OpenAI-Beta": "chatkit_beta=v1"
+        "OpenAI-Beta": "chatkit_beta=v1",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        workflow: { id: CHATKIT_WORKFLOW_ID },
+        user,
+      }),
     });
-
-    const text = await resp.text();
-    if (!resp.ok) {
-      console.error("[OpenAI] status:", resp.status, "| body:", text);
-      return res.status(500).json({ error: "OpenAI session failed", status: resp.status, body: text });
-    }
-
-    let data;
-    try { data = JSON.parse(text); } catch (e) {
-      console.error("[OpenAI] JSON parse error:", e, "raw:", text);
-      return res.status(500).json({ error: "Bad JSON from OpenAI", raw: text });
-    }
-
-    if (!data.client_secret) {
-      console.error("[OpenAI] Missing client_secret:", data);
-      return res.status(500).json({ error: "Missing client_secret from OpenAI", raw: data });
-    }
-
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json(data);
     return res.json({ client_secret: data.client_secret });
   } catch (err) {
-    console.error("[/api/chatkit/session] crash:", err);
-    return res.status(500).json({ error: "Server error", message: String(err && err.message || err) });
+    console.error("chatkit session error:", err);
+    return res.status(500).json({ error: "session_error" });
   }
 });
 
-// Monta el router /api
-app.use("/api", api);
+// ---------- GOOGLE AUTH ----------
+function getGoogleAuth() {
+  const key = (GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  return new google.auth.JWT(
+    GOOGLE_CLIENT_EMAIL,
+    null,
+    key,
+    [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/calendar"
+    ]
+  );
+}
+const sheetsApi = () => google.sheets({ version: "v4", auth: getGoogleAuth() });
+const calendarApi = () => google.calendar({ version: "v3", auth: getGoogleAuth() });
 
-// ===== START =====
-app.listen(PORT, () => {
-  console.log("API listening on " + PORT);
+// Helpers: append a Sheet row
+async function appendRow(tabName, values) {
+  const sheets = sheetsApi();
+  return sheets.spreadsheets.values.append({
+    spreadsheetId: SHEET_ID,
+    range: `${tabName}!A1`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [values] },
+  });
+}
+
+// ---------- TOOLS: create_lead ----------
+app.post("/tools/create_lead", async (req, res) => {
+  try {
+    const p = req.body || {};
+    // Campos mínimos
+    const required = ["full_name","email","phone","program_interest","language","source_channel","consent_personal_data","privacy_ack","costs_email_requested"];
+    for (const k of required) {
+      if (!p[k]) return res.status(400).json({ ok:false, error:`missing_${k}` });
+    }
+
+    const timestamp = new Date().toISOString();
+    const row = [
+      timestamp,
+      p.full_name,
+      p.email,
+      p.phone,
+      p.program_interest,
+      p.language,
+      p.source_channel,
+      p.consent_personal_data,
+      p.privacy_ack,
+      p.costs_email_requested,
+      p.notes || "",
+      "new",
+    ];
+    await appendRow("Leads", row);
+    return res.json({ ok:true });
+  } catch (err) {
+    console.error("create_lead error:", err?.response?.data || err);
+    return res.status(500).json({ ok:false, error:"create_lead_failed" });
+  }
 });
 
+// ---------- TOOLS: schedule_visit ----------
+app.post("/tools/schedule_visit", async (req, res) => {
+  const p = req.body || {};
+  try {
+    if (!CALENDAR_ID) return res.status(500).json({ ok:false, error:"missing_CALENDAR_ID" });
+
+    // Validar mínimos
+    if (!p.modality) return res.status(400).json({ ok:false, error:"missing_modality" });
+    if (!p.preferred_dt_local) return res.status(400).json({ ok:false, error:"missing_preferred_dt_local" });
+    if (!p.contact || !p.contact.name || !p.contact.email || !p.contact.phone) {
+      return res.status(400).json({ ok:false, error:"missing_contact_fields" });
+    }
+
+    // Parseo fecha/hora
+    const tz = "America/Panama";
+    const start = new Date(p.preferred_dt_local); // acepta "2025-10-16T10:30:00-05:00"
+    if (isNaN(start.getTime())) return res.status(400).json({ ok:false, error:"invalid_datetime" });
+    const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h
+
+    // Crear evento en Calendar
+    const calendar = calendarApi();
+    const summary = `Visita ${p.modality} — ${p.contact.name}`;
+    const description = [
+      `Contacto: ${p.contact.name} — ${p.contact.email} — ${p.contact.phone}`,
+      p.program_interest ? `Programa: ${p.program_interest}` : "",
+      p.notes ? `Notas: ${p.notes}` : "",
+    ].filter(Boolean).join("\n");
+
+    const ev = await calendar.events.insert({
+      calendarId: CALENDAR_ID,
+      requestBody: {
+        summary,
+        description,
+        start: { dateTime: start.toISOString(), timeZone: tz },
+        end:   { dateTime: end.toISOString(),   timeZone: tz },
+      },
+    });
+
+    // Registrar en Sheet (Citas)
+    const timestamp = new Date().toISOString();
+    const row = [
+      timestamp,
+      p.modality,
+      p.preferred_dt_local,
+      p.contact.name,
+      p.contact.email,
+      p.contact.phone,
+      p.program_interest || "",
+      "created",
+      p.notes || "",
+    ];
+    await appendRow("Citas", row);
+
+    return res.json({ ok:true, eventId: ev.data.id });
+  } catch (err) {
+    console.error("schedule_visit error:", err?.response?.data || err);
+    // Fallback: registrar la cita para seguimiento manual
+    try {
+      const timestamp = new Date().toISOString();
+      await appendRow("Citas", [
+        timestamp,
+        p.modality || "",
+        p.preferred_dt_local || "",
+        p.contact?.name || "",
+        p.contact?.email || "",
+        p.contact?.phone || "",
+        p.program_interest || "",
+        "manual_followup",
+        p.notes || "Registro automático falló; confirmar manual",
+      ]);
+    } catch(e){ console.error("append fallback failed:", e?.response?.data || e); }
+    return res.status(500).json({ ok:false, status:"manual_followup" });
+  }
+});
+
+// ---------- START ----------
+app.listen(PORT, () => console.log("API listening on " + PORT));
