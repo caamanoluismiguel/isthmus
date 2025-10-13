@@ -2,136 +2,200 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Isthmus · ChatAgent</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Isthmus · Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-  <!-- ChatKit runtime (CDN) -->
+  <!-- ChatKit runtime -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
   <!-- Verificación de dominio -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
   <style>
-    :root {
-      --fab-size: 56px;
-      --fab-gap: 20px;
-      --fab-bg: #0b5d3f; /* verde oscuro */
-    }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
+    :root{ --fab:#0b5d3f; --shadow:0 12px 30px rgba(0,0,0,.25); --gap:20px; --size:56px; }
+    *{ box-sizing:border-box } body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; background:#f6f8fb; }
+    header{ padding:20px; border-bottom:1px solid #eef2f6 } main{ padding:20px }
 
-    /* Contenedor del chat (overlay) */
-    #chat-shell {
-      position: fixed;
-      right: 20px; bottom: calc(var(--fab-gap) + var(--fab-size) + 12px);
-      width: 360px; height: 600px;
-      display: none;
-      background: #fff; border-radius: 12px; overflow: hidden;
-      box-shadow: 0 12px 30px rgba(0,0,0,.25); z-index: 9998;
+    #chat-shell{
+      position:fixed; right:20px; bottom:calc(var(--gap) + var(--size) + 12px);
+      width:360px; height:600px; background:#fff; border-radius:12px; overflow:auto;
+      box-shadow:var(--shadow); display:none; z-index:9998; padding:0;
     }
-
-    /* Botón flotante */
-    #chat-launcher {
-      position: fixed;
-      right: var(--fab-gap); bottom: var(--fab-gap);
-      width: var(--fab-size); height: var(--fab-size);
-      border-radius: 50%; border: none; cursor: pointer;
-      background: var(--fab-bg); color:#fff; font-size:22px;
-      box-shadow: 0 6px 20px rgba(0,0,0,.25); z-index: 9999;
-      display: inline-flex; align-items:center; justify-content:center;
-      transition: opacity .25s ease, transform .25s ease;
+    #chat-launcher{
+      position:fixed; right:var(--gap); bottom:var(--gap);
+      width:var(--size); height:var(--size); border:none; border-radius:50%;
+      background:var(--fab); color:#fff; font-size:22px; cursor:pointer; z-index:9999;
+      box-shadow:0 6px 20px rgba(0,0,0,.25);
+      display:inline-flex; align-items:center; justify-content:center;
+      transition:opacity .25s, transform .25s;
     }
-    #chat-launcher.hidden { opacity:0; pointer-events:none; transform: translateY(10px); }
+    #chat-launcher.hidden{ opacity:0; transform:translateY(10px); pointer-events:none }
 
-    /* Móviles: chat a pantalla parcial, sin superponer el botón enviar */
-    @media (max-width: 480px) {
-      #chat-shell {
-        right: 0; left: 0; bottom: 0;
-        width: 100vw; height: 70vh; border-radius: 12px 12px 0 0;
-      }
-      /* Colocamos el FAB un poco más arriba para no tapar UI del navegador */
-      #chat-launcher { bottom: 28px; }
+    /* Fallback Lite */
+    .lite{ padding:16px }
+    .lite h3{ margin:8px 0 12px }
+    .lite form{ display:grid; gap:8px; margin:12px 0 18px }
+    .lite input, .lite select, .lite textarea{
+      width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:10px; font:inherit;
+    }
+    .lite button{
+      background:#0b5d3f; color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer;
+    }
+    .hint{ font-size:12px; color:#64748b }
+    .ok{ color:#0b5d3f } .err{ color:#b91c1c }
+
+    @media (max-width:480px){
+      #chat-shell{ right:0; left:0; bottom:0; width:100vw; height:70vh; border-radius:12px 12px 0 0; }
+      #chat-launcher{ bottom:28px }
     }
   </style>
 </head>
 <body>
-  <header style="padding:20px;border-bottom:1px solid #eef2f6;">
+  <header>
     <h1>Demo Isthmus</h1>
-    <p>Esta es la landing de prueba. Abre el chat abajo a la derecha.</p>
+    <p>Abre el chat abajo a la derecha.</p>
   </header>
-  <main style="padding:20px;">
-    <p>Contenido de ejemplo…</p>
-  </main>
+  <main><p>Contenido de ejemplo…</p></main>
 
-  <!-- Overlay del chat + botón -->
-  <div id="chat-shell"></div>
+  <div id="chat-shell" role="dialog" aria-modal="true"></div>
   <button id="chat-launcher" aria-label="Abrir chat">💬</button>
 
   <script>
-  (function () {
-    const SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
-    const TOOLS_BASE  = "https://isthmus-production.up.railway.app/tools";
-
-    // ID estable por navegador
-    const deviceIdKey = "ck_device_id";
-    let deviceId = localStorage.getItem(deviceIdKey);
-    if (!deviceId) {
-      deviceId = (self.crypto?.randomUUID && crypto.randomUUID()) || String(Date.now());
-      localStorage.setItem(deviceIdKey, deviceId);
-    }
-
-    // Helpers
-    async function postJSON(url, payload){
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      let data = {};
-      try { data = await r.json(); } catch {}
-      if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
-      return data;
-    }
-
-    async function getClientSecret(current) {
-      // Patrón recomendado: pedir siempre un token fresco al abrir
-      // y permitir refresh cuando el runtime lo pida. :contentReference[oaicite:1]{index=1}
-      const res = await fetch(SESSION_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: deviceId, currentClientSecret: current || null })
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(()=> "");
-        throw new Error("No se pudo crear/refresh la sesión: " + txt);
-      }
-      const data = await res.json();
-      return data.client_secret;
-    }
-
-    // Espera a que el web component esté listo (evita “is not a function”)
-    async function waitForChatkit() {
-      if (customElements.get("openai-chatkit")) return;
-      await customElements.whenDefined("openai-chatkit");
-    }
+  (function(){
+    const SESSION_URL = "/api/chatkit/session";
+    const TOOLS_BASE  = "/tools";
 
     const shell = document.getElementById("chat-shell");
     const fab   = document.getElementById("chat-launcher");
-    let mounted = false;
-    let chatEl  = null;
+    const MOBILE = matchMedia("(max-width:480px)").matches;
 
-    function showShell(show) {
+    // ID estable
+    const deviceIdKey = "ck_device_id";
+    let deviceId = localStorage.getItem(deviceIdKey);
+    if (!deviceId) { deviceId = (crypto?.randomUUID?.()||String(Date.now())); localStorage.setItem(deviceIdKey, deviceId); }
+
+    // Helpers
+    async function postJSON(url, payload){
+      const r = await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+      let data={}; try{ data = await r.json(); }catch{}
+      if(!r.ok) throw new Error((data && (data.error||data.status)) || ("HTTP "+r.status));
+      return data;
+    }
+    async function getClientSecret(current){
+      const r = await fetch(SESSION_URL,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ userId: deviceId, currentClientSecret: current||null }) });
+      if(!r.ok){ throw new Error("session "+r.status); }
+      const j = await r.json(); return j.client_secret;
+    }
+    async function sentinelReachable(timeoutMs=1200){
+      try{ const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), timeoutMs);
+        await fetch("https://sentinel.openai.com/req", { mode:"no-cors", signal: ctrl.signal }); clearTimeout(t); return true;
+      }catch{ return false; }
+    }
+
+    function showShell(show){
       shell.style.display = show ? "block" : "none";
-      // Oculta FAB mientras el chat está abierto para que nunca tape el botón enviar
       fab.classList.toggle("hidden", show);
     }
 
-    async function mountChatOnce() {
-      if (mounted) return;
-      await waitForChatkit();
+    // --- Fallback Lite UI ---
+    function mountLite(){
+      shell.innerHTML = `
+        <div class="lite">
+          <h3>Asesor virtual — modo simple</h3>
+          <p class="hint">Tu red está bloqueando el chat interactivo. Puedes dejarnos tus datos y coordinamos por correo/teléfono.</p>
 
-      // Crea el elemento y configura opciones. :contentReference[oaicite:2]{index=2}
+          <section>
+            <h4>Enviar <b>costos por correo</b></h4>
+            <form id="f-lead">
+              <input name="full_name" placeholder="Nombre completo" required />
+              <input type="email" name="email" placeholder="Email" required />
+              <input name="phone" placeholder="Teléfono" required />
+              <select name="program_interest" required>
+                <option value="">Programa de interés</option>
+                <option>Arquitectura</option>
+                <option>Arquitectura Interior</option>
+                <option>Diseño Industrial</option>
+                <option>Diseño y Comunicación</option>
+              </select>
+              <textarea name="notes" placeholder="Notas (opcional)"></textarea>
+              <input type="hidden" name="language" value="es"/>
+              <input type="hidden" name="source_channel" value="web"/>
+              <input type="hidden" name="consent_personal_data" value="yes"/>
+              <input type="hidden" name="privacy_ack" value="yes"/>
+              <input type="hidden" name="costs_email_requested" value="yes"/>
+              <button type="submit">Solicitar costos</button>
+              <div id="m-lead" class="hint"></div>
+            </form>
+          </section>
+
+          <section>
+            <h4><b>Agendar</b> visita/llamada</h4>
+            <form id="f-cita">
+              <select name="modality" required>
+                <option value="">Modalidad</option>
+                <option value="presencial">Presencial</option>
+                <option value="virtual">Virtual</option>
+              </select>
+              <input name="preferred_dt_local" placeholder="Fecha y hora (ej. 2025-10-16T11:00:00-05:00)" required />
+              <input name="name" placeholder="Tu nombre" required />
+              <input type="email" name="email" placeholder="Email" required />
+              <input name="phone" placeholder="Teléfono" required />
+              <input name="program_interest" placeholder="Programa (opcional)" />
+              <textarea name="notes" placeholder="Notas (opcional)"></textarea>
+              <button type="submit">Registrar solicitud</button>
+              <div id="m-cita" class="hint"></div>
+            </form>
+          </section>
+        </div>
+      `;
+
+      // Handlers
+      const lead = shell.querySelector("#f-lead");
+      const mLead = shell.querySelector("#m-lead");
+      lead.onsubmit = async (e)=>{
+        e.preventDefault();
+        const p = Object.fromEntries(new FormData(lead).entries());
+        mLead.textContent = "Enviando…";
+        try { await postJSON(TOOLS_BASE+"/create_lead", p);
+          mLead.innerHTML = '<span class="ok">Listo. Te enviamos los costos por correo a la brevedad.</span>';
+          lead.reset();
+        } catch(err){
+          mLead.innerHTML = '<span class="err">No se pudo registrar. Intenta más tarde.</span>';
+        }
+      };
+
+      const cita = shell.querySelector("#f-cita");
+      const mCita = shell.querySelector("#m-cita");
+      cita.onsubmit = async (e)=>{
+        e.preventDefault();
+        const fd = new FormData(cita);
+        const payload = {
+          modality: fd.get("modality"),
+          preferred_dt_local: fd.get("preferred_dt_local"),
+          contact: { name: fd.get("name"), email: fd.get("email"), phone: fd.get("phone") },
+          program_interest: fd.get("program_interest") || "",
+          notes: fd.get("notes") || ""
+        };
+        mCita.textContent = "Registrando…";
+        try { const r = await postJSON(TOOLS_BASE+"/schedule_visit", payload);
+          mCita.innerHTML = '<span class="ok">Solicitud registrada. Te confirmaremos por correo/teléfono.</span>';
+          cita.reset();
+        } catch(err){
+          mCita.innerHTML = '<span class="err">No se pudo registrar. Nuestro equipo te contactará (registro manual creado).</span>';
+        }
+      };
+    }
+
+    // --- ChatKit normal ---
+    let mounted = false, chatEl = null;
+    async function mountChat(){
+      if (mounted) return;
+      // Espera a que el custom element exista
+      if (!customElements.get("openai-chatkit")) {
+        await customElements.whenDefined("openai-chatkit");
+      }
       chatEl = document.createElement("openai-chatkit");
       chatEl.className = "h-[600px] w-[360px]";
-      shell.appendChild(chatEl);
+      shell.replaceChildren(chatEl);
 
       chatEl.setOptions({
         api: { getClientSecret },
@@ -140,66 +204,47 @@
         startScreen: {
           greeting: "¡Hola! Soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
           prompts: [
-            { label: "Conocer Arquitectura", prompt: "Quiero información del programa de Arquitectura.", icon: "search" },
-            { label: "Costos por correo",    prompt: "Envíenme los costos por correo, por favor.",      icon: "write"  },
-            { label: "Agendar visita",       prompt: "Quiero agendar una visita al campus.",            icon: "calendar" }
+            { label:"Conocer Arquitectura", prompt:"Quiero información del programa de Arquitectura.", icon:"search" },
+            { label:"Costos por correo",    prompt:"Envíenme los costos por correo, por favor.",       icon:"write"  },
+            { label:"Agendar visita",       prompt:"Quiero agendar una visita al campus.",            icon:"calendar" }
           ]
         },
-        // Bridge de “client tools” del agente al backend. :contentReference[oaicite:3]{index=3}
         async onClientTool({ name, params }) {
-          switch (name) {
-            case "create_lead":
-              return await postJSON(TOOLS_BASE + "/create_lead", params);
-            case "schedule_visit":
-              return await postJSON(TOOLS_BASE + "/schedule_visit", params);
-            default:
-              throw new Error("Client tool no reconocida: " + name);
-          }
+          if (name === "create_lead")    return await postJSON(TOOLS_BASE+"/create_lead", params);
+          if (name === "schedule_visit") return await postJSON(TOOLS_BASE+"/schedule_visit", params);
+          throw new Error("client tool no reconocida: "+name);
         },
-        theme: {
-          colorScheme: "light",
-          color: { accent: { primary: "#0b5d3f", level: 2 } }, // verde oscuro
-          radius: "round",
-          density: "normal",
-          typography: { fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial" }
-        }
+        theme: { colorScheme:"light", color:{ accent:{ primary:"#0b5d3f", level:2 } }, radius:"round", density:"normal" }
       });
-
       mounted = true;
     }
 
-    // Toggle
-    fab.addEventListener("click", async () => {
-      try {
-        await mountChatOnce();
-        const willShow = shell.style.display !== "block";
-        showShell(willShow);
-      } catch (e) {
-        console.error("Error al abrir el chat:", e);
-        alert("No pude abrir el chat. Revisa la consola por detalles.");
+    async function openPanel(){
+      fab.classList.add("hidden");
+      showShell(true);
+
+      // En móvil, esconder FAB a los 5s cuando el panel está cerrado; abierto ya está oculto
+      if (!mounted) {
+        const ok = await sentinelReachable();
+        if (!ok) { mountLite(); return; }
+        try { await mountChat(); }
+        catch(e){ console.warn("Fallo montando ChatKit, usando Lite:", e); mountLite(); }
       }
-    });
-
-    // Móvil: esconder FAB 5s después de cargar, reaparece al hacer scroll up
-    const isMobile = matchMedia("(max-width: 480px)").matches;
-    if (isMobile) {
-      setTimeout(() => fab.classList.add("hidden"), 5000);
-      let lastY = window.scrollY;
-      window.addEventListener("scroll", () => {
-        const up = window.scrollY < lastY;
-        fab.classList.toggle("hidden", !up && shell.style.display !== "block");
-        lastY = window.scrollY;
-      }, { passive: true });
     }
+    function closePanel(){ showShell(false); if (MOBILE) setTimeout(()=>fab.classList.add("hidden"), 5000); }
 
-    // Acceso rápido con tecla “c” (desktop)
-    document.addEventListener("keydown", (e) => {
-      if (e.key?.toLowerCase() === "c") fab.click();
+    fab.addEventListener("click", ()=>{
+      const open = shell.style.display === "block";
+      open ? closePanel() : openPanel();
     });
+
+    // Auto-ocultar FAB en móvil a los 5s (cuando el panel está cerrado)
+    if (MOBILE) setTimeout(()=>fab.classList.add("hidden"), 5000);
   })();
   </script>
 </body>
 </html>
+
 
 
 
