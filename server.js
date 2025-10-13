@@ -1,55 +1,35 @@
-// server.js
+// server.js (con chat conversacional sin ChatKit)
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const { google } = require("googleapis");
+const path = require("path");
 
 // ---------- ENV ----------
 const {
   PORT = 8080,
   OPENAI_API_KEY,
-  CHATKIT_WORKFLOW_ID,
-
-  // CORS (opcional si sirves front y back en el mismo dominio)
-  ALLOWED_ORIGIN,            // p.ej. https://www.tudominio.com
-  ALLOWED_ORIGINS_EXTRA,     // opcional: coma-separada
-
-  // Google Sheets (Service Account)
+  CHATKIT_WORKFLOW_ID,      // se mantiene por si luego vuelves al widget
+  ALLOWED_ORIGIN,
+  ALLOWED_ORIGINS_EXTRA,
   SHEET_ID,
   GOOGLE_CLIENT_EMAIL,
   GOOGLE_PRIVATE_KEY,
-  SHEET_TAB_LEADS,           // opcional, default "Leads"
-  SHEET_TAB_CITAS,           // opcional, default "Citas"
-
-  // Google Calendar (OAuth 2.0 con refresh_token)
-  CLIENT_ID,
-  CLIENT_SECRET,
-  GOOGLE_OAUTH_TOKEN_JSON,   // opcional: JSON completo
-  GOOGLE_REFRESH_TOKEN,      // ✅ preferido: SOLO el refresh token "1//...."
-
-  // Calendar ID
-  CALENDAR_ID,               // p.ej. "primary" o "...@group.calendar.google.com"
-
-  // Debug (opcional)
-  DEBUG_SECRET
+  GOOGLE_PROJECT_ID,
+  CALENDAR_ID,
 } = process.env;
 
-const TAB_LEADS = SHEET_TAB_LEADS || "Leads";
-const TAB_CITAS = SHEET_TAB_CITAS || "Citas";
-const PANAMA_TZ = "America/Panama";
-const CAL_ID = CALENDAR_ID || "primary";
+if (!OPENAI_API_KEY) {
+  console.error("Falta OPENAI_API_KEY en variables de entorno");
+}
 
 // ---------- APP ----------
 const app = express();
 app.use(express.json());
 
-// Sirve archivos estáticos de /server/public (tu index.html)
+// servir estáticos (index.html en /public)
 app.use(express.static(path.join(__dirname, "public")));
-app.get("/", (_, res) => {
-  res.sendFile(path.join(__dirname, "public/index.html"));
-});
 
-// CORS: permite tu dominio público y extras (no necesario si front y back comparten origen)
+// CORS
 const allowList = [
   ...(ALLOWED_ORIGIN ? [ALLOWED_ORIGIN] : []),
   ...(ALLOWED_ORIGINS_EXTRA ? ALLOWED_ORIGINS_EXTRA.split(",").map(s => s.trim()) : []),
@@ -57,7 +37,7 @@ const allowList = [
 app.use(
   cors({
     origin(origin, cb) {
-      if (!origin) return cb(null, true); // allow curl / direct
+      if (!origin) return cb(null, true);
       if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true);
       return cb(null, false);
     },
@@ -67,7 +47,7 @@ app.use(
 // ---------- HEALTH ----------
 app.get("/health", (_, res) => res.send("ok"));
 
-// ---------- CHATKIT: crea sesión ----------
+// ---------- (Sigue disponible) CHATKIT sesión ----------
 app.post("/api/chatkit/session", async (req, res) => {
   try {
     const user = (req.body && (req.body.user || req.body.userId)) || "anon";
@@ -92,32 +72,22 @@ app.post("/api/chatkit/session", async (req, res) => {
   }
 });
 
-// ---------- GOOGLE AUTH (Sheets: Service Account) ----------
-function getSheetsAuth() {
+// ---------- GOOGLE AUTH ----------
+function getGoogleAuth() {
   const key = (GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   return new google.auth.JWT(
     GOOGLE_CLIENT_EMAIL,
     null,
     key,
-    ["https://www.googleapis.com/auth/spreadsheets"]
+    [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/calendar",
+    ]
   );
 }
-const sheetsApi = () => google.sheets({ version: "v4", auth: getSheetsAuth() });
+const sheetsApi = () => google.sheets({ version: "v4", auth: getGoogleAuth() });
+const calendarApi = () => google.calendar({ version: "v3", auth: getGoogleAuth() });
 
-// ---------- GOOGLE AUTH (Calendar: OAuth con refresh_token) ----------
-function calendarApi() {
-  const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
-  if (GOOGLE_OAUTH_TOKEN_JSON && GOOGLE_OAUTH_TOKEN_JSON.trim().startsWith("{")) {
-    oauth2.setCredentials(JSON.parse(GOOGLE_OAUTH_TOKEN_JSON));
-  } else if (GOOGLE_REFRESH_TOKEN) {
-    oauth2.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
-  } else {
-    throw new Error("Calendar OAuth no configurado (falta token).");
-  }
-  return google.calendar({ version: "v3", auth: oauth2 });
-}
-
-// ---------- Helpers ----------
 async function appendRow(tabName, values) {
   const sheets = sheetsApi();
   return sheets.spreadsheets.values.append({
@@ -128,52 +98,28 @@ async function appendRow(tabName, values) {
   });
 }
 
-// Parser de fecha/hora local Panamá: "16/10/2025 11:00", "16/10 11am", "16-10 3 pm"
-function parseLocalPanama(input) {
-  const s = String(input).trim().toLowerCase().replace(/\s+/g, " ");
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
-  if (!m) return null;
-  let [, dd, mm, yyyy, hh, min, ampm] = m;
-  const now = new Date();
-  const year = yyyy ? Number(yyyy.length === 2 ? "20" + yyyy : yyyy) : now.getFullYear();
-  let hour = Number(hh);
-  const minute = Number(min || "0");
-  if (ampm) {
-    if (ampm === "pm" && hour < 12) hour += 12;
-    if (ampm === "am" && hour === 12) hour = 0;
-  }
-  // Panamá UTC-5: construimos el instante UTC equivalente a la hora local
-  return new Date(Date.UTC(year, Number(mm) - 1, Number(dd), hour + 5, minute));
-}
-
 // ---------- TOOLS: create_lead ----------
 app.post("/tools/create_lead", async (req, res) => {
   try {
     const p = req.body || {};
-    // Mínimos para cualquier lead
-    const coreRequired = ["full_name", "email", "phone"];
-    for (const k of coreRequired) {
-      if (!p[k]) return res.status(400).json({ ok: false, error: `missing_${k}` });
-    }
-    const row = [
-      new Date().toISOString(),
-      p.full_name,
-      p.email,
-      p.phone,
-      p.program_interest || "",
-      p.language || "es",
-      p.source_channel || "web",
-      p.consent_personal_data || "yes",
-      p.privacy_ack || "yes",
-      p.costs_email_requested || "no",
-      p.notes || "",
-      "new",
+    const required = [
+      "full_name","email","phone","program_interest","language",
+      "source_channel","consent_personal_data","privacy_ack","costs_email_requested"
     ];
-    await appendRow(TAB_LEADS, row);
-    return res.json({ ok: true });
+    for (const k of required) {
+      if (!p[k]) return res.status(400).json({ ok:false, error:`missing_${k}` });
+    }
+    const timestamp = new Date().toISOString();
+    const row = [
+      timestamp, p.full_name, p.email, p.phone, p.program_interest, p.language,
+      p.source_channel, p.consent_personal_data, p.privacy_ack, p.costs_email_requested,
+      p.notes || "", "new",
+    ];
+    await appendRow("Leads", row);
+    return res.json({ ok:true });
   } catch (err) {
     console.error("create_lead error:", err?.response?.data || err);
-    return res.status(200).json({ ok: false, error: "create_lead_failed" });
+    return res.status(500).json({ ok:false, error:"create_lead_failed" });
   }
 });
 
@@ -181,23 +127,18 @@ app.post("/tools/create_lead", async (req, res) => {
 app.post("/tools/schedule_visit", async (req, res) => {
   const p = req.body || {};
   try {
-    // Validar mínimos
-    if (!p.modality) return res.status(400).json({ ok: false, error: "missing_modality" });
-    if (!p.preferred_dt_local) return res.status(400).json({ ok: false, error: "missing_preferred_dt_local" });
+    if (!CALENDAR_ID) return res.status(500).json({ ok:false, error:"missing_CALENDAR_ID" });
+    if (!p.modality) return res.status(400).json({ ok:false, error:"missing_modality" });
+    if (!p.preferred_dt_local) return res.status(400).json({ ok:false, error:"missing_preferred_dt_local" });
     if (!p.contact || !p.contact.name || !p.contact.email || !p.contact.phone) {
-      return res.status(400).json({ ok: false, error: "missing_contact_fields" });
+      return res.status(400).json({ ok:false, error:"missing_contact_fields" });
     }
 
-    // Parseo fecha/hora (ISO directo o "16/10 11am")
-    let start = new Date(p.preferred_dt_local);
-    if (isNaN(start.getTime())) {
-      const parsed = parseLocalPanama(p.preferred_dt_local);
-      if (!parsed) return res.status(400).json({ ok: false, error: "invalid_datetime_format" });
-      start = parsed;
-    }
-    const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h
+    const tz = "America/Panama";
+    const start = new Date(p.preferred_dt_local);
+    if (isNaN(start.getTime())) return res.status(400).json({ ok:false, error:"invalid_datetime" });
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
 
-    // Crear evento en Calendar
     const calendar = calendarApi();
     const summary = `Visita ${p.modality} — ${p.contact.name}`;
     const description = [
@@ -206,96 +147,174 @@ app.post("/tools/schedule_visit", async (req, res) => {
       p.notes ? `Notas: ${p.notes}` : "",
     ].filter(Boolean).join("\n");
 
-    const calendarId = p.calendar_id || CAL_ID; // permite override por payload si quieres
     const ev = await calendar.events.insert({
-      calendarId,
+      calendarId: CALENDAR_ID,
       requestBody: {
         summary,
         description,
-        start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
-        end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ },
-        // attendees: [{ email: p.contact.email }], // descomenta si quieres invitar por correo
+        start: { dateTime: start.toISOString(), timeZone: tz },
+        end:   { dateTime: end.toISOString(),   timeZone: tz },
       },
     });
 
-    // Registrar en Sheet (Citas)
-    await appendRow(TAB_CITAS, [
-      new Date().toISOString(),
-      p.modality,
-      p.preferred_dt_local,
-      p.contact.name,
-      p.contact.email,
-      p.contact.phone,
-      p.program_interest || "",
-      "created",
-      p.notes || "",
+    const timestamp = new Date().toISOString();
+    await appendRow("Citas", [
+      timestamp, p.modality, p.preferred_dt_local, p.contact.name,
+      p.contact.email, p.contact.phone, p.program_interest || "",
+      "created", p.notes || "",
     ]);
 
-    return res.json({ ok: true, eventId: ev.data.id });
+    return res.json({ ok:true, eventId: ev.data.id });
   } catch (err) {
     console.error("schedule_visit error:", err?.response?.data || err);
-    // Fallback: registrar la cita para seguimiento manual, sin romper el UI
     try {
-      await appendRow(TAB_CITAS, [
-        new Date().toISOString(),
-        p.modality || "",
-        p.preferred_dt_local || "",
-        p.contact?.name || "",
-        p.contact?.email || "",
-        p.contact?.phone || "",
-        p.program_interest || "",
-        "manual_followup",
+      const timestamp = new Date().toISOString();
+      await appendRow("Citas", [
+        timestamp, p.modality || "", p.preferred_dt_local || "",
+        p.contact?.name || "", p.contact?.email || "", p.contact?.phone || "",
+        p.program_interest || "", "manual_followup",
         p.notes || "Registro automático falló; confirmar manual",
       ]);
-    } catch (e) {
-      console.error("append fallback failed:", e?.response?.data || e);
-    }
-    return res.status(200).json({ ok: false, status: "manual_followup" });
+    } catch(e){ console.error("append fallback failed:", e?.response?.data || e); }
+    return res.status(500).json({ ok:false, status:"manual_followup" });
   }
 });
 
-// ---------- DEBUG (opcional) ----------
-function requireDebugSecret(req, res, next) {
-  if (!DEBUG_SECRET) return next(); // sin secreto, queda abierto (útil en desarrollo)
-  const sent = req.get("x-debug-secret");
-  if (sent === DEBUG_SECRET) return next();
-  return res.status(403).json({ ok: false, error: "forbidden" });
+// =============== CONVERSACIONAL SIN CHATKIT =================
+// Simple loop de function-calling con la API de OpenAI
+const AGENT_SYSTEM_PROMPT = `
+Eres el Asesor de Admisiones de ISTHMUS. Responde en el idioma del usuario.
+Políticas clave:
+- Capturar leads para costos por correo (no publiques montos).
+- Agendar llamadas/visitas L–V 08:00–17:00 America/Panama.
+- Antes de guardar datos, pide consentimiento breve ("autorizo").
+- Pide sólo lo que falte (slot-filling mínimo). Usa confirmación única antes de registrar.
+- Para programar, normaliza fecha/hora a America/Panama. Si fuera de horario, sugiere 2 alternativas cercanas.
+Herramientas disponibles:
+- create_lead(payload)
+- schedule_visit(payload)
+Devuelve respuestas breves (60–120 palabras) y una sola CTA por turno.
+`;
+
+async function callOpenAIWithTools(messages) {
+  const url = "https://api.openai.com/v1/chat/completions";
+  const model = "gpt-4o-mini";
+
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "create_lead",
+        description: "Registra un lead para enviar costos por correo.",
+        parameters: {
+          type: "object",
+          properties: {
+            full_name: { type:"string" },
+            email: { type:"string" },
+            phone: { type:"string" },
+            program_interest: { type:"string" },
+            language: { type:"string" },
+            source_channel: { type:"string", enum:["web"] },
+            consent_personal_data: { type:"string", enum:["yes","no"] },
+            privacy_ack: { type:"string", enum:["yes","no"] },
+            costs_email_requested: { type:"string", enum:["yes","no"] },
+            notes: { type:"string" }
+          },
+          required:["full_name","email","phone","program_interest","language","source_channel","consent_personal_data","privacy_ack","costs_email_requested"]
+        }
+      }
+    },
+    {
+      type:"function",
+      function:{
+        name:"schedule_visit",
+        description:"Registra solicitud de visita/llamada",
+        parameters:{
+          type:"object",
+          properties:{
+            modality:{ type:"string", enum:["presencial","virtual"] },
+            preferred_dt_local:{ type:"string", description:"Formato ISO local, ej 2025-10-16T11:00:00-05:00" },
+            contact:{
+              type:"object",
+              properties:{
+                name:{type:"string"}, email:{type:"string"}, phone:{type:"string"}
+              },
+              required:["name","email","phone"]
+            },
+            program_interest:{ type:"string" },
+            notes:{ type:"string" }
+          },
+          required:["modality","preferred_dt_local","contact"]
+        }
+      }
+    }
+  ];
+
+  const body = { model, messages, tools, tool_choice: "auto" };
+  const r = await fetch(url, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){
+    const t = await r.text().catch(()=> "");
+    throw new Error("OpenAI error "+r.status+": "+t);
+  }
+  const j = await r.json();
+  return j.choices[0].message;
 }
 
-app.get("/debug/calendar-list", requireDebugSecret, async (req, res) => {
+app.post("/api/agent_chat", async (req, res) => {
   try {
-    const calendar = calendarApi();
-    const r = await calendar.calendarList.list();
-    const items = (r.data.items || []).map(i => ({
-      id: i.id, summary: i.summary, primary: !!i.primary
-    }));
-    return res.json({ ok: true, items });
-  } catch (e) {
-    console.error("debug calendar-list error:", e?.response?.data || e);
-    return res.status(200).json({ ok: false, error: (e?.response?.data || e?.message || "fail") });
-  }
-});
+    const userText = (req.body && req.body.text) || "";
+    if (!userText) return res.status(400).json({ error:"missing_text" });
 
-app.post("/debug/calendar-insert", requireDebugSecret, async (req, res) => {
-  try {
-    const calendar = calendarApi();
-    const start = new Date(Date.now() + 15 * 60 * 1000);
-    const end   = new Date(start.getTime() + 60 * 60 * 1000);
-    const ev = await calendar.events.insert({
-      calendarId: CAL_ID,
-      requestBody: {
-        summary: "Debug Visit",
-        start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
-        end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ }
+    let messages = [
+      { role:"system", content: AGENT_SYSTEM_PROMPT },
+      { role:"user", content: userText }
+    ];
+
+    // loop de herramientas
+    for (let i = 0; i < 3; i++) {
+      const msg = await callOpenAIWithTools(messages);
+
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        // respuesta final
+        return res.json({ reply: msg.content || "" });
       }
-    });
-    return res.json({ ok: true, eventId: ev.data.id, htmlLink: ev.data.htmlLink });
-  } catch (e) {
-    console.error("debug calendar-insert error:", e?.response?.data || e);
-    return res.status(200).json({ ok: false, error: (e?.response?.data || e?.message || "fail") });
+
+      // ejecutar tools y devolver resultados al modelo
+      for (const tc of msg.tool_calls) {
+        const name = tc.function.name;
+        const args = JSON.parse(tc.function.arguments || "{}");
+        let toolResult;
+
+        if (name === "create_lead") {
+          try { toolResult = await (await fetch(`${req.protocol}://${req.get("host")}/tools/create_lead`, {
+            method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(args)
+          })).json(); } catch(e){ toolResult = { ok:false, error:"client_fetch_error" }; }
+        } else if (name === "schedule_visit") {
+          try { toolResult = await (await fetch(`${req.protocol}://${req.get("host")}/tools/schedule_visit`, {
+            method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(args)
+          })).json(); } catch(e){ toolResult = { ok:false, error:"client_fetch_error" }; }
+        } else {
+          toolResult = { ok:false, error:"unknown_tool" };
+        }
+
+        messages.push({ role:"assistant", tool_calls:[tc] });
+        messages.push({ role:"tool", tool_call_id: tc.id, content: JSON.stringify(toolResult) });
+      }
+    }
+
+    // si no salió antes:
+    return res.json({ reply: "He registrado tu solicitud. El equipo te confirmará por correo/teléfono." });
+  } catch (err) {
+    console.error("agent_chat error:", err);
+    return res.status(500).json({ error:"agent_chat_failed" });
   }
 });
 
 // ---------- START ----------
 app.listen(PORT, () => console.log("API listening on " + PORT));
+
 
