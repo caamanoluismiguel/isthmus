@@ -12,7 +12,7 @@
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
   <style>
-    :root { --ck-blue:#0f5ea8; --ck-bg:#f6f8fb; }
+    :root { --ck-green:#0b6b3a; --ck-bg:#f6f8fb; }
     * { box-sizing:border-box; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:var(--ck-bg); }
 
@@ -22,10 +22,10 @@
       background:#fff; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.25); overflow:hidden; z-index: 9998;
     }
 
-    /* Botón flotante */
+    /* Botón flotante (verde oscuro) */
     #chat-launcher{
       position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-      width:56px; height:56px; border-radius:50%; border:none; background:var(--ck-blue);
+      width:56px; height:56px; border-radius:50%; border:none; background:var(--ck-green);
       color:#fff; font-size:22px; cursor:pointer; z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,.25);
       transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
     }
@@ -70,7 +70,10 @@
     const container = document.getElementById("chat-container");
     const launcher  = document.getElementById("chat-launcher");
     const closer    = document.getElementById("chat-close");
+    const MOBILE_Q  = window.matchMedia("(max-width: 480px)");
     let mounted = false;
+    let control;
+    let hideTimer = null;
 
     function toast(msg, ms=2600){
       statusEl.textContent = msg;
@@ -122,13 +125,12 @@
       return data.client_secret;
     }
 
-    // --- helpers para ocultar/mostrar el botón flotante de forma robusta ---
+    // Mostrar/ocultar la burbuja
     function hideLauncher() {
       launcher.style.opacity = "0";
       launcher.style.visibility = "hidden";
       launcher.style.pointerEvents = "none";
       launcher.style.transform = "scale(0.92)";
-      // por si el teclado/rotación cambian layout en Android
       launcher.setAttribute("aria-hidden", "true");
     }
     function showLauncher() {
@@ -138,9 +140,16 @@
       launcher.style.transform = "";
       launcher.setAttribute("aria-hidden", "false");
     }
+    function scheduleAutoHideIfMobile() {
+      if (hideTimer) clearTimeout(hideTimer);
+      if (MOBILE_Q.matches) {
+        hideTimer = setTimeout(hideLauncher, 5000); // ⏱️ oculta a los 5 s en móviles
+      }
+    }
 
     function setOpen(open){
       if (!mounted && open) {
+        control = window.ChatKit.create({ api: { getClientSecret }, tools: clientTools });
         window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
         mounted = true;
       }
@@ -149,8 +158,16 @@
       document.body.classList.toggle("chat-open", open);
       launcher.setAttribute("aria-label", open ? "Cerrar chat" : "Abrir chat");
       launcher.setAttribute("title", open ? "Cerrar chat" : "Abrir chat");
-      // ocultar el flotante cuando está abierto (sí o sí)
-      if (open) hideLauncher(); else showLauncher();
+
+      if (open) {
+        // al abrir: mostrar la burbuja y programar ocultarla a los 5 s (solo móvil)
+        showLauncher();
+        scheduleAutoHideIfMobile();
+      } else {
+        // al cerrar: cancelar temporizador y mostrar la burbuja
+        if (hideTimer) clearTimeout(hideTimer);
+        showLauncher();
+      }
     }
 
     function mountWhenReady(){
@@ -158,22 +175,24 @@
         requestAnimationFrame(mountWhenReady);
         return;
       }
-      // crear control una vez cargado runtime
-      control = window.ChatKit.create({ api: { getClientSecret }, tools: clientTools });
-
       launcher.addEventListener("click", () => setOpen(container.style.display !== "block"));
-      closer .addEventListener("click", () => setOpen(false));
+      closer  .addEventListener("click", () => setOpen(false));
 
-      // re-aplicar estado tras rotación / cambio de viewport (Android + teclado)
+      // si cambia tamaño/orientación, re-aplica lógica (Android + teclado)
       ["resize","orientationchange"].forEach(ev =>
         window.addEventListener(ev, () => {
           const open = container.style.display === "block";
-          if (open) hideLauncher(); else showLauncher();
+          if (open) {
+            // en móviles, vuelve a programar el ocultamiento
+            showLauncher();
+            scheduleAutoHideIfMobile();
+          } else {
+            showLauncher();
+          }
         })
       );
     }
 
-    let control; // referencia al control del widget
     mountWhenReady();
   })();
   </script>
