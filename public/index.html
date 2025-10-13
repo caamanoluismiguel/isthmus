@@ -8,7 +8,7 @@
   <!-- ChatKit runtime -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
 
-  <!-- Verificación de dominio (usa tu domain_pk válido) -->
+  <!-- Verificación de dominio (tu domain_pk) -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
   <style>
@@ -59,7 +59,7 @@
 
   <script>
   (function(){
-    // Same-origin contra tu backend (sirve en Railway y en tu dominio CNAME a Railway)
+    // Mismo origen contra tu backend en Railway (sirve detrás de tu dominio)
     const SESSION_URL = "/api/chatkit/session";
     const TOOLS_BASE  = "/tools";
 
@@ -105,17 +105,49 @@
       return j.client_secret;
     }
 
-    // Client tools → mapeadas a tus endpoints (y KB)
+    // ---- “Todos son leads” + evitar crash del widget devolviendo SIEMPRE strings ----
     async function onClientTool({ name, params }) {
       const { tool, ...clean } = params || {};
-      console.log("[ClientTool]", name, clean);
-      if (name === "create_lead")    return await postJSON(TOOLS_BASE + "/create_lead", clean);
-      if (name === "schedule_visit") return await postJSON(TOOLS_BASE + "/schedule_visit", clean);
-      if (name === "search_kb")      return await postJSON(TOOLS_BASE + "/search_kb", clean); // ⬅️ NUEVO
+      let resp;
+
+      if (name === "create_lead") {
+        resp = await postJSON(TOOLS_BASE + "/create_lead", clean);
+        return `create_lead: ${resp.ok ? "ok" : "error"}`;
+      }
+
+      if (name === "schedule_visit") {
+        // 1) Registrar la cita
+        resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean);
+        const eid = resp && resp.eventId ? ` (${resp.eventId})` : "";
+
+        // 2) Auto–crear LEAD calificado (visit_qualified)
+        try {
+          const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
+          const leadPayload = {
+            full_name: clean?.contact?.name || "Sin nombre",
+            email:     clean?.contact?.email || "",
+            phone:     clean?.contact?.phone || "",
+            program_interest: clean?.program_interest || "no_especificado",
+            language: lang,
+            source_channel: "web",
+            consent_personal_data: "yes", // asumimos consentimiento ya que autorizó para agendar
+            privacy_ack: "yes",
+            costs_email_requested: "no", // este lead proviene de cita, no pidió costos explícitamente
+            notes: `Lead auto-creado por cita (visit_qualified). ${clean?.notes ? clean.notes : ""}`.trim()
+          };
+          // crea el lead; si falla, no bloquea la conversación
+          await postJSON(TOOLS_BASE + "/create_lead", leadPayload).catch(err => {
+            console.warn("auto-create_lead failed:", err?.message || err);
+          });
+        } catch(e){ console.warn("auto-lead error:", e?.message || e); }
+
+        return `schedule_visit: ${resp.ok ? "ok" : "error"}${eid}`;
+      }
+
       throw new Error("tool no implementada: " + name);
     }
 
-    // Montaje del web component con opciones
+    // Montaje del componente
     async function ensureReady(){
       if (!customElements.get("openai-chatkit")) {
         await customElements.whenDefined("openai-chatkit");
