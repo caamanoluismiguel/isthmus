@@ -23,10 +23,11 @@ const {
   // Google Calendar (OAuth 2.0 con refresh_token)
   CLIENT_ID,
   CLIENT_SECRET,
-  GOOGLE_OAUTH_TOKEN_JSON,   // JSON del Playground con "refresh_token"
+  GOOGLE_OAUTH_TOKEN_JSON,   // opcional: JSON completo (si lo prefieres)
+  GOOGLE_REFRESH_TOKEN,      // ✅ preferido: SOLO el refresh token "1//...."
 
-  // Calendar ID (p.ej. "primary")
-  CALENDAR_ID,
+  // Calendar ID
+  CALENDAR_ID,               // p.ej. "primary"
 
   // Debug (opcional)
   DEBUG_SECRET
@@ -97,13 +98,18 @@ function getSheetsAuth() {
 }
 const sheetsApi = () => google.sheets({ version: "v4", auth: getSheetsAuth() });
 
-// ---------- GOOGLE AUTH (Calendar: OAuth con refresh_token) ----------
+// ---------- GOOGLE AUTH (Calendar: OAuth con solo refresh_token) ----------
 function calendarApi() {
-  if (!CLIENT_ID || !CLIENT_SECRET || !GOOGLE_OAUTH_TOKEN_JSON) {
-    throw new Error("Calendar OAuth no configurado (CLIENT_ID/CLIENT_SECRET/GOOGLE_OAUTH_TOKEN_JSON).");
-  }
   const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
-  oauth2.setCredentials(JSON.parse(GOOGLE_OAUTH_TOKEN_JSON));
+  if (GOOGLE_OAUTH_TOKEN_JSON && GOOGLE_OAUTH_TOKEN_JSON.trim().startsWith("{")) {
+    // También sirve si guardaste el JSON completo
+    oauth2.setCredentials(JSON.parse(GOOGLE_OAUTH_TOKEN_JSON));
+  } else if (GOOGLE_REFRESH_TOKEN) {
+    // ✅ Ruta preferida: solo refresh token
+    oauth2.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
+  } else {
+    throw new Error("Calendar OAuth no configurado (falta token).");
+  }
   return google.calendar({ version: "v3", auth: oauth2 });
 }
 
@@ -118,7 +124,7 @@ async function appendRow(tabName, values) {
   });
 }
 
-// Parser para entradas como "16/10/2025 11:00", "16/10 11am", "16-10 3 pm"
+// Parser: "16/10/2025 11:00", "16/10 11am", "16-10 3 pm"
 function parseLocalPanama(input) {
   const s = String(input).trim().toLowerCase().replace(/\s+/g, " ");
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
@@ -140,14 +146,12 @@ function parseLocalPanama(input) {
 app.post("/tools/create_lead", async (req, res) => {
   try {
     const p = req.body || {};
-
     // Mínimos para cualquier lead
     const coreRequired = ["full_name", "email", "phone"];
     for (const k of coreRequired) {
       if (!p[k]) return res.status(400).json({ ok: false, error: `missing_${k}` });
     }
-
-    // Defaults para no romper en fallbacks (el flujo de "costos" llenará los reales)
+    // Defaults para no romper en fallbacks
     const row = [
       new Date().toISOString(),
       p.full_name,
@@ -162,12 +166,10 @@ app.post("/tools/create_lead", async (req, res) => {
       p.notes || "",
       "new",
     ];
-
     await appendRow(TAB_LEADS, row);
     return res.json({ ok: true });
   } catch (err) {
     console.error("create_lead error:", err?.response?.data || err);
-    // Devolver 200 para no romper el UI; el agente puede decidir reintentar o escalar
     return res.status(200).json({ ok: false, error: "create_lead_failed" });
   }
 });
@@ -192,7 +194,7 @@ app.post("/tools/schedule_visit", async (req, res) => {
     }
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h
 
-    // Crear evento en Calendar (OAuth)
+    // Crear evento en Calendar (OAuth con refresh token)
     const calendar = calendarApi();
     const summary = `Visita ${p.modality} — ${p.contact.name}`;
     const description = [
@@ -208,8 +210,7 @@ app.post("/tools/schedule_visit", async (req, res) => {
         description,
         start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
         end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ },
-        // Si quieres invitar al contacto:
-        // attendees: [{ email: p.contact.email }],
+        // attendees: [{ email: p.contact.email }], // si quieres invitar por correo
       },
     });
 
