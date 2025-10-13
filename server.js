@@ -1,6 +1,7 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const { google } = require("googleapis");
 
 // ---------- ENV ----------
@@ -9,7 +10,7 @@ const {
   OPENAI_API_KEY,
   CHATKIT_WORKFLOW_ID,
 
-  // CORS
+  // CORS (opcional si sirves front y back en el mismo dominio)
   ALLOWED_ORIGIN,            // p.ej. https://www.tudominio.com
   ALLOWED_ORIGINS_EXTRA,     // opcional: coma-separada
 
@@ -23,11 +24,11 @@ const {
   // Google Calendar (OAuth 2.0 con refresh_token)
   CLIENT_ID,
   CLIENT_SECRET,
-  GOOGLE_OAUTH_TOKEN_JSON,   // opcional: JSON completo (si lo prefieres)
+  GOOGLE_OAUTH_TOKEN_JSON,   // opcional: JSON completo
   GOOGLE_REFRESH_TOKEN,      // ✅ preferido: SOLO el refresh token "1//...."
 
   // Calendar ID
-  CALENDAR_ID,               // p.ej. "primary"
+  CALENDAR_ID,               // p.ej. "primary" o "...@group.calendar.google.com"
 
   // Debug (opcional)
   DEBUG_SECRET
@@ -42,7 +43,13 @@ const CAL_ID = CALENDAR_ID || "primary";
 const app = express();
 app.use(express.json());
 
-// CORS: permite tu dominio público y extras
+// Sirve archivos estáticos de /server/public (tu index.html)
+app.use(express.static(path.join(__dirname, "public")));
+app.get("/", (_, res) => {
+  res.sendFile(path.join(__dirname, "public/index.html"));
+});
+
+// CORS: permite tu dominio público y extras (no necesario si front y back comparten origen)
 const allowList = [
   ...(ALLOWED_ORIGIN ? [ALLOWED_ORIGIN] : []),
   ...(ALLOWED_ORIGINS_EXTRA ? ALLOWED_ORIGINS_EXTRA.split(",").map(s => s.trim()) : []),
@@ -58,7 +65,6 @@ app.use(
 );
 
 // ---------- HEALTH ----------
-app.get("/", (_, res) => res.send("ok"));
 app.get("/health", (_, res) => res.send("ok"));
 
 // ---------- CHATKIT: crea sesión ----------
@@ -98,14 +104,12 @@ function getSheetsAuth() {
 }
 const sheetsApi = () => google.sheets({ version: "v4", auth: getSheetsAuth() });
 
-// ---------- GOOGLE AUTH (Calendar: OAuth con solo refresh_token) ----------
+// ---------- GOOGLE AUTH (Calendar: OAuth con refresh_token) ----------
 function calendarApi() {
   const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
   if (GOOGLE_OAUTH_TOKEN_JSON && GOOGLE_OAUTH_TOKEN_JSON.trim().startsWith("{")) {
-    // También sirve si guardaste el JSON completo
     oauth2.setCredentials(JSON.parse(GOOGLE_OAUTH_TOKEN_JSON));
   } else if (GOOGLE_REFRESH_TOKEN) {
-    // ✅ Ruta preferida: solo refresh token
     oauth2.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
   } else {
     throw new Error("Calendar OAuth no configurado (falta token).");
@@ -124,7 +128,7 @@ async function appendRow(tabName, values) {
   });
 }
 
-// Parser: "16/10/2025 11:00", "16/10 11am", "16-10 3 pm"
+// Parser de fecha/hora local Panamá: "16/10/2025 11:00", "16/10 11am", "16-10 3 pm"
 function parseLocalPanama(input) {
   const s = String(input).trim().toLowerCase().replace(/\s+/g, " ");
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
@@ -151,7 +155,6 @@ app.post("/tools/create_lead", async (req, res) => {
     for (const k of coreRequired) {
       if (!p[k]) return res.status(400).json({ ok: false, error: `missing_${k}` });
     }
-    // Defaults para no romper en fallbacks
     const row = [
       new Date().toISOString(),
       p.full_name,
@@ -194,7 +197,7 @@ app.post("/tools/schedule_visit", async (req, res) => {
     }
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h
 
-    // Crear evento en Calendar (OAuth con refresh token)
+    // Crear evento en Calendar
     const calendar = calendarApi();
     const summary = `Visita ${p.modality} — ${p.contact.name}`;
     const description = [
@@ -203,14 +206,15 @@ app.post("/tools/schedule_visit", async (req, res) => {
       p.notes ? `Notas: ${p.notes}` : "",
     ].filter(Boolean).join("\n");
 
+    const calendarId = p.calendar_id || CAL_ID; // permite override por payload si quieres
     const ev = await calendar.events.insert({
-      calendarId: CAL_ID, // "primary" por defecto
+      calendarId,
       requestBody: {
         summary,
         description,
         start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
         end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ },
-       attendees: [{ email: p.contact.email }], // si quieres invitar por correo
+        // attendees: [{ email: p.contact.email }], // descomenta si quieres invitar por correo
       },
     });
 
@@ -250,7 +254,7 @@ app.post("/tools/schedule_visit", async (req, res) => {
   }
 });
 
-// ---------- DEBUG (opcional): protege con DEBUG_SECRET ----------
+// ---------- DEBUG (opcional) ----------
 function requireDebugSecret(req, res, next) {
   if (!DEBUG_SECRET) return next(); // sin secreto, queda abierto (útil en desarrollo)
   const sent = req.get("x-debug-secret");
@@ -294,3 +298,4 @@ app.post("/debug/calendar-insert", requireDebugSecret, async (req, res) => {
 
 // ---------- START ----------
 app.listen(PORT, () => console.log("API listening on " + PORT));
+
