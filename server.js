@@ -210,7 +210,7 @@ app.post("/tools/schedule_visit", async (req, res) => {
         description,
         start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
         end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ },
-        // attendees: [{ email: p.contact.email }], // si quieres invitar por correo
+       attendees: [{ email: p.contact.email }], // si quieres invitar por correo
       },
     });
 
