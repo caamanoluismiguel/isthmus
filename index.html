@@ -8,66 +8,67 @@
   <!-- ChatKit runtime -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
 
-  <!-- Verificación de dominio (tu domain_pk) -->
+  <!-- Verificación de dominio -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
   <style>
     :root { --ck-blue:#0f5ea8; --ck-bg:#f6f8fb; }
     * { box-sizing:border-box; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:var(--ck-bg); }
-    #chat-container {
+
+    /* Contenedor del chat */
+    #chat-container{
       position: fixed; right: 20px; bottom: 88px; width: 360px; height: 600px; display:none;
       background:#fff; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.25); overflow:hidden; z-index: 9998;
     }
-    #chat-launcher {
-      position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); width:56px; height:56px; border-radius:50%;
-      border:none; background:var(--ck-blue); color:#fff; font-size:22px; cursor:pointer; z-index: 9999;
-      box-shadow: 0 6px 20px rgba(0,0,0,.25);
-      transition: all .18s ease;
-    }
-    #status {
-      position: fixed; left: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); padding:8px 12px; border-radius:10px; background:#fff;
-      box-shadow:0 6px 20px rgba(0,0,0,.12); color:#222; font-size:12px; display:none; z-index:9999;
+
+    /* Botón flotante */
+    #chat-launcher{
+      position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      width:56px; height:56px; border-radius:50%; border:none; background:var(--ck-blue);
+      color:#fff; font-size:22px; cursor:pointer; z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+      transition: transform .18s ease, opacity .18s ease;
     }
 
-    /* Modo móvil */
+    /* Botón de cerrar dentro del chat */
+    #chat-close{
+      position:absolute; top:8px; right:8px; width:36px; height:36px; border:none; border-radius:9999px;
+      background:rgba(0,0,0,.5); color:#fff; font-size:20px; line-height:36px; text-align:center; cursor:pointer;
+      z-index:10000; display:none;
+    }
+    .chat-open #chat-close{ display:block; }
+
+    #status{
+      position: fixed; left: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); padding:8px 12px;
+      border-radius:10px; background:#fff; box-shadow:0 6px 20px rgba(0,0,0,.12); color:#222; font-size:12px;
+      display:none; z-index:9999;
+    }
+
+    /* Móvil */
     @media (max-width:480px){
-      #chat-container{
-        width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0;
-      }
-      #chat-launcher{
-        right:16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-      }
-      /* Cuando el chat está abierto en móvil, mueve el botón a la izquierda y hazlo un poco más pequeño */
-      .chat-open #chat-launcher{
-        left:16px; right:auto; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-        width:48px; height:48px; font-size:20px;
-      }
-    }
-
-    /* También aplica el movimiento a la izquierda en pantallas pequeñas/medianas si quieres evitar solapamiento */
-    @media (max-width:768px){
-      .chat-open #chat-launcher{
-        left:16px; right:auto;
-      }
+      #chat-container{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
+      /* Oculta el botón flotante cuando el chat está abierto para no tapar “Enviar” */
+      .chat-open #chat-launcher{ display:none; }
+      /* Extra: al estar cerrado, el botón flotante queda abajo a la derecha pero con safe-area */
+      #chat-launcher{ right:16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
     }
   </style>
 </head>
 <body>
-  <!-- Tu página puede ir aquí…  -->
+  <!-- Tu página… -->
 
-  <!-- Contenedor del chat + botón -->
-  <div id="chat-container" aria-hidden="true"></div>
+  <!-- Chat -->
+  <div id="chat-container" aria-hidden="true">
+    <button id="chat-close" aria-label="Cerrar chat" title="Cerrar">×</button>
+  </div>
   <button id="chat-launcher" aria-label="Abrir chat" title="Abrir chat">💬</button>
   <div id="status" role="status" aria-live="polite"></div>
 
   <script>
   (function () {
-    // Endpoints de tu backend
     const SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
     const TOOLS_BASE  = "https://isthmus-production.up.railway.app/tools";
 
-    // Utilidad: mini aviso no intrusivo
     const statusEl = document.getElementById("status");
     function toast(msg, ms=2600){
       statusEl.textContent = msg;
@@ -76,7 +77,7 @@
       toast._t = setTimeout(()=> statusEl.style.display="none", ms);
     }
 
-    // ID de dispositivo estable en el navegador
+    // ID estable por navegador
     const deviceIdKey = "ck_device_id";
     let deviceId = localStorage.getItem(deviceIdKey);
     if (!deviceId) {
@@ -84,8 +85,7 @@
       localStorage.setItem(deviceIdKey, deviceId);
     }
 
-    // --- Client tools: el agente llamará a estas funciones ---
-    // Versión TOLERANTE A ERRORES (no lanza excepciones; devuelve { ok:false, ... } en fallos)
+    // --- Client tools tolerantes a errores ---
     async function postJSON(url, payload){
       try {
         const r = await fetch(url, {
@@ -94,25 +94,18 @@
           body: JSON.stringify(payload)
         });
         const data = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          // No rompemos el UI; devolvemos el error al agente
-          return { ok:false, http_status:r.status, ...data };
-        }
+        if (!r.ok) return { ok:false, http_status:r.status, ...data };
         return data;
-      } catch (e) {
+      } catch {
         return { ok:false, error:"client_fetch_error" };
       }
     }
 
     const clientTools = {
-      // create_lead({ full_name, email, phone, program_interest, language, ... })
-      create_lead: async (args) => postJSON(TOOLS_BASE + "/create_lead", args),
-
-      // schedule_visit({ modality, preferred_dt_local, contact:{ name,email,phone }, program_interest, notes })
-      schedule_visit: async (args) => postJSON(TOOLS_BASE + "/schedule_visit", args),
+      create_lead:    (args) => postJSON(TOOLS_BASE + "/create_lead", args),
+      schedule_visit: (args) => postJSON(TOOLS_BASE + "/schedule_visit", args)
     };
 
-    // Obtener token efímero SIEMPRE fresco
     async function getClientSecret() {
       const res = await fetch(SESSION_URL, {
         method: "POST",
@@ -124,10 +117,9 @@
         throw new Error("No se pudo crear la sesión");
       }
       const data = await res.json();
-      return data.client_secret; // ek_...
+      return data.client_secret;
     }
 
-    // Montaje cuando el runtime esté cargado
     function mountWhenReady(){
       if (!window.ChatKit || !window.ChatKit.create) {
         requestAnimationFrame(mountWhenReady);
@@ -136,6 +128,7 @@
 
       const container = document.getElementById("chat-container");
       const launcher  = document.getElementById("chat-launcher");
+      const closer    = document.getElementById("chat-close");
       let mounted = false;
 
       const control = window.ChatKit.create({
@@ -143,30 +136,24 @@
         tools: clientTools
       });
 
-      launcher.onclick = () => {
-        if (!mounted) {
+      function setOpen(open){
+        if (!mounted && open) {
           window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
           mounted = true;
         }
-        const show = container.style.display !== "block";
-        container.style.display = show ? "block" : "none";
-        container.setAttribute("aria-hidden", String(!show));
-        // Marca el body para que el CSS mueva el botón en móvil cuando el chat esté abierto
-        document.body.classList.toggle("chat-open", show);
-        launcher.setAttribute("aria-label", show ? "Cerrar chat" : "Abrir chat");
-        launcher.setAttribute("title", show ? "Cerrar chat" : "Abrir chat");
-      };
+        container.style.display = open ? "block" : "none";
+        container.setAttribute("aria-hidden", String(!open));
+        document.body.classList.toggle("chat-open", open);
+        launcher.setAttribute("aria-label", open ? "Cerrar chat" : "Abrir chat");
+        launcher.setAttribute("title", open ? "Cerrar chat" : "Abrir chat");
+      }
+
+      launcher.addEventListener("click", () => setOpen(container.style.display !== "block"));
+      closer  .addEventListener("click", () => setOpen(false));
     }
 
-    // Evita tokens viejos cuando recargas con caché
-    if ("serviceWorker" in navigator) {
-      // nada obligatorio; solo recordatorio si usas SW
-    }
-
+    if ("serviceWorker" in navigator) { /* opcional */ }
     mountWhenReady();
-
-    // Info útil en consola (solo para debug local; puedes quitarlo)
-    console.log("[Isthmus Chat] deviceId:", deviceId);
   })();
   </script>
 </body>
