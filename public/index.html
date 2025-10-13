@@ -48,14 +48,16 @@
     </style>
   </head>
   <body>
-    <div id="chat-shell" aria-hidden="true">
+    <!-- Contenedor del chat: SIN aria-hidden; usa semántica de diálogo -->
+    <div id="chat-shell" role="dialog" aria-modal="true">
       <button id="chat-close" aria-label="Cerrar chat" title="Cerrar">×</button>
       <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
     </div>
-    <button id="chat-launcher" aria-label="Abrir chat" title="Abrir chat">💬</button>
+
+    <!-- Botón flotante -->
+    <button id="chat-launcher" aria-controls="chat-shell" aria-expanded="false" aria-label="Abrir chat" title="Abrir chat">💬</button>
 
     <script>
-      // Endpoints del MISMO servidor (Railway)
       const SESSION_URL = "/api/chatkit/session";
       const TOOLS_BASE  = "/tools";
 
@@ -96,6 +98,15 @@
         return client_secret;
       }
 
+      // Client tools via callback (nuevo API)
+      async function onClientTool({ name, params }) {
+        switch (name) {
+          case "create_lead":    return await postJSON(TOOLS_BASE + "/create_lead", params);
+          case "schedule_visit": return await postJSON(TOOLS_BASE + "/schedule_visit", params);
+          default: throw new Error(`Herramienta no implementada en cliente: ${name}`);
+        }
+      }
+
       // FAB show/hide
       function hideFab(){ fab.style.opacity="0"; fab.style.visibility="hidden"; fab.style.pointerEvents="none"; fab.style.transform="scale(.92)"; }
       function showFab(){ fab.style.opacity=""; fab.style.visibility=""; fab.style.pointerEvents=""; fab.style.transform=""; }
@@ -110,19 +121,7 @@
         }
         el.setOptions({
           api: { getClientSecret },
-
-          // ⬇️ Nueva forma: manejar client tools con un callback
-          async onClientTool({ name, params }) {
-            switch (name) {
-              case "create_lead":
-                return await postJSON(TOOLS_BASE + "/create_lead", params);
-              case "schedule_visit":
-                return await postJSON(TOOLS_BASE + "/schedule_visit", params);
-              default:
-                throw new Error(`Herramienta no implementada en cliente: ${name}`);
-            }
-          },
-
+          onClientTool,        // <<— en vez de "tools"
           locale: "es",
           composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
           startScreen: {
@@ -133,8 +132,6 @@
               { label:"Agendar visita",       prompt:"Quiero agendar una visita al campus.",            icon:"calendar"}
             ]
           },
-
-          // Tema: valor fijo válido (evita primaria vacía)
           theme: {
             color: { accent: { primary: "#0b6b3a", level: 2 } },
             radius: "round",
@@ -144,20 +141,28 @@
         configured = true;
       }
 
-      // Abrir / cerrar
+      // Abrir / cerrar (sin aria-hidden)
       async function openChat(){
         await ensureChatConfigured();
         shell.style.display = "block";
         shell.classList.add("open");
-        shell.setAttribute("aria-hidden","false");
+        fab.setAttribute("aria-expanded","true");
+        // En móviles: oculta FAB a los 5s
         showFab();
         if (hideTimer) clearTimeout(hideTimer);
-        if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000); // auto-oculta en móvil
+        if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000);
+        // Lleva el foco al contenido del diálogo
+        setTimeout(() => {
+          const focusable = shell.querySelector("#chat-close") || shell.querySelector("button, [tabindex]:not([tabindex='-1'])");
+          if (focusable) focusable.focus({ preventScroll:true });
+        }, 0);
       }
       function closeChat(){
+        // Devuelve foco al botón flotante ANTES de ocultar
+        fab.focus({ preventScroll:true });
         shell.style.display = "none";
         shell.classList.remove("open");
-        shell.setAttribute("aria-hidden","true");
+        fab.setAttribute("aria-expanded","false");
         if (hideTimer) clearTimeout(hideTimer);
         showFab();
       }
@@ -184,4 +189,5 @@
     </script>
   </body>
 </html>
+
 
