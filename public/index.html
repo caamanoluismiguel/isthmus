@@ -8,7 +8,7 @@
   <!-- ChatKit runtime -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
 
-  <!-- Verificación de dominio (tu domain_pk) -->
+  <!-- Verificación de dominio (domain_pk) -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
   <style>
@@ -16,14 +16,11 @@
     *{ box-sizing:border-box }
     body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
 
-    /* Contenedor del chat */
     #chat-shell{
       position: fixed; right: 20px; bottom: calc(var(--gap) + var(--size) + 12px);
       width: 360px; height: 600px; display: none;
       background:#fff; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); z-index: 9998;
     }
-
-    /* Botón flotante */
     #chat-launcher{
       position: fixed; right: var(--gap); bottom: var(--gap);
       width: var(--size); height: var(--size); border-radius: 50%; border: none; cursor: pointer; z-index: 9999;
@@ -42,7 +39,6 @@
   </style>
 </head>
 <body>
-  <!-- Tu página -->
   <header>
     <h1>ISTHMUS</h1>
     <p>Asesor virtual de Admisiones.</p>
@@ -51,7 +47,6 @@
     <p>Abre el chat abajo a la derecha.</p>
   </main>
 
-  <!-- Chat -->
   <div id="chat-shell" role="dialog" aria-modal="true">
     <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
   </div>
@@ -59,11 +54,9 @@
 
   <script>
   (function(){
-    // Mismo origen contra tu backend en Railway (sirve detrás de tu dominio)
     const SESSION_URL = "/api/chatkit/session";
     const TOOLS_BASE  = "/tools";
 
-    // DOM
     const shell  = document.getElementById("chat-shell");
     const comp   = document.getElementById("isthmus-chat");
     const fab    = document.getElementById("chat-launcher");
@@ -77,7 +70,7 @@
       localStorage.setItem(key, deviceId);
     }
 
-    // Helpers HTTP
+    // HTTP helper: NO lanza excepción; retorna {ok:boolean, ...}
     async function postJSON(url, payload){
       const r = await fetch(url, {
         method: "POST",
@@ -86,11 +79,11 @@
       });
       let data = {};
       try { data = await r.json(); } catch {}
-      if (!r.ok) throw new Error((data && (data.error||data.status)) || ("HTTP "+r.status));
-      return data;
+      if (!r.ok) return Object.assign({ ok:false }, data, { status:r.status });
+      return Object.assign({ ok:true }, data);
     }
 
-    // Token efímero para ChatKit
+    // Token efímero
     async function getClientSecret(current){
       const r = await fetch(SESSION_URL, {
         method: "POST",
@@ -105,49 +98,73 @@
       return j.client_secret;
     }
 
-    // ---- “Todos son leads” + evitar crash del widget devolviendo SIEMPRE strings ----
+    // “Todos son leads”: tras schedule_visit auto-crear lead calificado.
+    async function autoCreateLeadFromVisit(clean, noteExtra){
+      const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
+      const payload = {
+        full_name: clean?.contact?.name || "Sin nombre",
+        email:     clean?.contact?.email || "",
+        phone:     clean?.contact?.phone || "",
+        program_interest: clean?.program_interest || "no_especificado",
+        language: lang,
+        source_channel: "web",
+        consent_personal_data: "yes",
+        privacy_ack: "yes",
+        costs_email_requested: "no",
+        notes: `Lead auto-creado por cita (visit_qualified). ${noteExtra||""}`.trim()
+      };
+      const r = await postJSON(TOOLS_BASE + "/create_lead", payload);
+      if (!r.ok) console.warn("auto-create_lead failed:", r);
+      return r.ok;
+    }
+
+    // Devuelve SIEMPRE una cadena → evita crash del widget
     async function onClientTool({ name, params }) {
       const { tool, ...clean } = params || {};
-      let resp;
 
       if (name === "create_lead") {
-        resp = await postJSON(TOOLS_BASE + "/create_lead", clean);
-        return `create_lead: ${resp.ok ? "ok" : "error"}`;
+        // Pre-validación (evita 400 y permite al modelo pedir el campo faltante)
+        const missing = [];
+        if (!clean.full_name)        missing.push("full_name");
+        if (!clean.email)            missing.push("email");
+        if (!clean.phone)            missing.push("phone");
+        if (!clean.program_interest) missing.push("program_interest");
+        if (!clean.consent_personal_data) missing.push("consent_personal_data");
+        if (!clean.privacy_ack)          missing.push("privacy_ack");
+        if (!clean.language)             missing.push("language");
+        if (!clean.source_channel)       missing.push("source_channel");
+        if (!clean.costs_email_requested) missing.push("costs_email_requested");
+        if (missing.length) return `error:missing_${missing[0]}`;
+
+        const resp = await postJSON(TOOLS_BASE + "/create_lead", clean);
+        return resp.ok ? "create_lead: ok" : `error:${resp.error||resp.status||"lead_failed"}`;
       }
 
       if (name === "schedule_visit") {
-        // 1) Registrar la cita
-        resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean);
-        const eid = resp && resp.eventId ? ` (${resp.eventId})` : "";
+        // Pre-validación mínima
+        if (!clean.modality) return "error:missing_modality";
+        if (!clean.preferred_dt_local) return "error:missing_preferred_dt_local";
+        if (!clean.contact?.name || !clean.contact?.email || !clean.contact?.phone) {
+          return "error:missing_contact_fields";
+        }
+        // 1) Registrar cita
+        const resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean);
+        const eid  = resp && resp.eventId ? ` (${resp.eventId})` : "";
 
-        // 2) Auto–crear LEAD calificado (visit_qualified)
-        try {
-          const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
-          const leadPayload = {
-            full_name: clean?.contact?.name || "Sin nombre",
-            email:     clean?.contact?.email || "",
-            phone:     clean?.contact?.phone || "",
-            program_interest: clean?.program_interest || "no_especificado",
-            language: lang,
-            source_channel: "web",
-            consent_personal_data: "yes", // asumimos consentimiento ya que autorizó para agendar
-            privacy_ack: "yes",
-            costs_email_requested: "no", // este lead proviene de cita, no pidió costos explícitamente
-            notes: `Lead auto-creado por cita (visit_qualified). ${clean?.notes ? clean.notes : ""}`.trim()
-          };
-          // crea el lead; si falla, no bloquea la conversación
-          await postJSON(TOOLS_BASE + "/create_lead", leadPayload).catch(err => {
-            console.warn("auto-create_lead failed:", err?.message || err);
-          });
-        } catch(e){ console.warn("auto-lead error:", e?.message || e); }
-
-        return `schedule_visit: ${resp.ok ? "ok" : "error"}${eid}`;
+        if (resp.ok) {
+          // 2) Auto-lead calificado
+          await autoCreateLeadFromVisit(clean);
+          return `schedule_visit: ok${eid}`;
+        } else {
+          // Fallback: dejar lead para seguimiento manual
+          await autoCreateLeadFromVisit(clean, "Registro automático falló; confirmar manual.");
+          return `error:${resp.error||resp.status||"visit_failed"}`;
+        }
       }
 
-      throw new Error("tool no implementada: " + name);
+      return "error:tool_not_implemented";
     }
 
-    // Montaje del componente
     async function ensureReady(){
       if (!customElements.get("openai-chatkit")) {
         await customElements.whenDefined("openai-chatkit");
@@ -176,7 +193,7 @@
 
     function showShell(show){
       shell.style.display = show ? "block" : "none";
-      fab.classList.toggle("hidden", show); // al abrir oculto el FAB para no tapar “Enviar”
+      fab.classList.toggle("hidden", show);
       fab.setAttribute("aria-expanded", String(show));
     }
 
@@ -197,7 +214,7 @@
 
     window.addEventListener("unhandledrejection", (e) => {
       console.error("ChatKit error:", e.reason);
-      alert("Tu navegador/red bloquea conexiones necesarias para el chat. Desactiva extensiones de bloqueo o prueba en otra red.");
+      // No alert agresivo aquí; el modelo puede recuperarse del string de error.
     });
   })();
   </script>
