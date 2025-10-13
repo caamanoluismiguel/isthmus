@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Isthmus · ChatAgent</title>
 
   <!-- ChatKit runtime -->
@@ -27,13 +27,13 @@
       position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
       width:56px; height:56px; border-radius:50%; border:none; background:var(--ck-blue);
       color:#fff; font-size:22px; cursor:pointer; z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,.25);
-      transition: transform .18s ease, opacity .18s ease;
+      transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
     }
 
     /* Botón de cerrar dentro del chat */
     #chat-close{
       position:absolute; top:8px; right:8px; width:36px; height:36px; border:none; border-radius:9999px;
-      background:rgba(0,0,0,.5); color:#fff; font-size:20px; line-height:36px; text-align:center; cursor:pointer;
+      background:rgba(0,0,0,.55); color:#fff; font-size:20px; line-height:36px; text-align:center; cursor:pointer;
       z-index:10000; display:none;
     }
     .chat-open #chat-close{ display:block; }
@@ -47,9 +47,6 @@
     /* Móvil */
     @media (max-width:480px){
       #chat-container{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
-      /* Oculta el botón flotante cuando el chat está abierto para no tapar “Enviar” */
-      .chat-open #chat-launcher{ display:none; }
-      /* Extra: al estar cerrado, el botón flotante queda abajo a la derecha pero con safe-area */
       #chat-launcher{ right:16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
     }
   </style>
@@ -70,6 +67,11 @@
     const TOOLS_BASE  = "https://isthmus-production.up.railway.app/tools";
 
     const statusEl = document.getElementById("status");
+    const container = document.getElementById("chat-container");
+    const launcher  = document.getElementById("chat-launcher");
+    const closer    = document.getElementById("chat-close");
+    let mounted = false;
+
     function toast(msg, ms=2600){
       statusEl.textContent = msg;
       statusEl.style.display = "block";
@@ -120,39 +122,58 @@
       return data.client_secret;
     }
 
+    // --- helpers para ocultar/mostrar el botón flotante de forma robusta ---
+    function hideLauncher() {
+      launcher.style.opacity = "0";
+      launcher.style.visibility = "hidden";
+      launcher.style.pointerEvents = "none";
+      launcher.style.transform = "scale(0.92)";
+      // por si el teclado/rotación cambian layout en Android
+      launcher.setAttribute("aria-hidden", "true");
+    }
+    function showLauncher() {
+      launcher.style.opacity = "";
+      launcher.style.visibility = "";
+      launcher.style.pointerEvents = "";
+      launcher.style.transform = "";
+      launcher.setAttribute("aria-hidden", "false");
+    }
+
+    function setOpen(open){
+      if (!mounted && open) {
+        window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
+        mounted = true;
+      }
+      container.style.display = open ? "block" : "none";
+      container.setAttribute("aria-hidden", String(!open));
+      document.body.classList.toggle("chat-open", open);
+      launcher.setAttribute("aria-label", open ? "Cerrar chat" : "Abrir chat");
+      launcher.setAttribute("title", open ? "Cerrar chat" : "Abrir chat");
+      // ocultar el flotante cuando está abierto (sí o sí)
+      if (open) hideLauncher(); else showLauncher();
+    }
+
     function mountWhenReady(){
       if (!window.ChatKit || !window.ChatKit.create) {
         requestAnimationFrame(mountWhenReady);
         return;
       }
-
-      const container = document.getElementById("chat-container");
-      const launcher  = document.getElementById("chat-launcher");
-      const closer    = document.getElementById("chat-close");
-      let mounted = false;
-
-      const control = window.ChatKit.create({
-        api: { getClientSecret },
-        tools: clientTools
-      });
-
-      function setOpen(open){
-        if (!mounted && open) {
-          window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
-          mounted = true;
-        }
-        container.style.display = open ? "block" : "none";
-        container.setAttribute("aria-hidden", String(!open));
-        document.body.classList.toggle("chat-open", open);
-        launcher.setAttribute("aria-label", open ? "Cerrar chat" : "Abrir chat");
-        launcher.setAttribute("title", open ? "Cerrar chat" : "Abrir chat");
-      }
+      // crear control una vez cargado runtime
+      control = window.ChatKit.create({ api: { getClientSecret }, tools: clientTools });
 
       launcher.addEventListener("click", () => setOpen(container.style.display !== "block"));
-      closer  .addEventListener("click", () => setOpen(false));
+      closer .addEventListener("click", () => setOpen(false));
+
+      // re-aplicar estado tras rotación / cambio de viewport (Android + teclado)
+      ["resize","orientationchange"].forEach(ev =>
+        window.addEventListener(ev, () => {
+          const open = container.style.display === "block";
+          if (open) hideLauncher(); else showLauncher();
+        })
+      );
     }
 
-    if ("serviceWorker" in navigator) { /* opcional */ }
+    let control; // referencia al control del widget
     mountWhenReady();
   })();
   </script>
