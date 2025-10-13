@@ -1,200 +1,206 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <title>Isthmus · Chat</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<head>
+  <meta charset="utf-8" />
+  <title>Isthmus · ChatAgent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- ChatKit runtime -->
-    <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+  <!-- ChatKit runtime (CDN) -->
+  <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+  <!-- Verificación de dominio -->
+  <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
-    <!-- Verificación de dominio -->
-    <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
+  <style>
+    :root {
+      --fab-size: 56px;
+      --fab-gap: 20px;
+      --fab-bg: #0b5d3f; /* verde oscuro */
+    }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
 
-    <style>
-      :root{
-        --fab:#0b6b3a; /* verde oscuro */
-        --shadow: 0 12px 30px rgba(0,0,0,.25);
+    /* Contenedor del chat (overlay) */
+    #chat-shell {
+      position: fixed;
+      right: 20px; bottom: calc(var(--fab-gap) + var(--fab-size) + 12px);
+      width: 360px; height: 600px;
+      display: none;
+      background: #fff; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0,0,0,.25); z-index: 9998;
+    }
+
+    /* Botón flotante */
+    #chat-launcher {
+      position: fixed;
+      right: var(--fab-gap); bottom: var(--fab-gap);
+      width: var(--fab-size); height: var(--fab-size);
+      border-radius: 50%; border: none; cursor: pointer;
+      background: var(--fab-bg); color:#fff; font-size:22px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.25); z-index: 9999;
+      display: inline-flex; align-items:center; justify-content:center;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    #chat-launcher.hidden { opacity:0; pointer-events:none; transform: translateY(10px); }
+
+    /* Móviles: chat a pantalla parcial, sin superponer el botón enviar */
+    @media (max-width: 480px) {
+      #chat-shell {
+        right: 0; left: 0; bottom: 0;
+        width: 100vw; height: 70vh; border-radius: 12px 12px 0 0;
       }
-      *{box-sizing:border-box}
-      body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
+      /* Colocamos el FAB un poco más arriba para no tapar UI del navegador */
+      #chat-launcher { bottom: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <header style="padding:20px;border-bottom:1px solid #eef2f6;">
+    <h1>Demo Isthmus</h1>
+    <p>Esta es la landing de prueba. Abre el chat abajo a la derecha.</p>
+  </header>
+  <main style="padding:20px;">
+    <p>Contenido de ejemplo…</p>
+  </main>
 
-      /* Contenedor del chat (lo montamos dentro) */
-      #chat-container{
-        position: fixed; right: 20px; bottom: 88px; width: 360px; height: 600px;
-        background:#fff; border-radius:12px; overflow:hidden; box-shadow: var(--shadow);
-        display:none; z-index: 9998;
+  <!-- Overlay del chat + botón -->
+  <div id="chat-shell"></div>
+  <button id="chat-launcher" aria-label="Abrir chat">💬</button>
+
+  <script>
+  (function () {
+    const SESSION_URL = "https://isthmus-production.up.railway.app/api/chatkit/session";
+    const TOOLS_BASE  = "https://isthmus-production.up.railway.app/tools";
+
+    // ID estable por navegador
+    const deviceIdKey = "ck_device_id";
+    let deviceId = localStorage.getItem(deviceIdKey);
+    if (!deviceId) {
+      deviceId = (self.crypto?.randomUUID && crypto.randomUUID()) || String(Date.now());
+      localStorage.setItem(deviceIdKey, deviceId);
+    }
+
+    // Helpers
+    async function postJSON(url, payload){
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      let data = {};
+      try { data = await r.json(); } catch {}
+      if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+      return data;
+    }
+
+    async function getClientSecret(current) {
+      // Patrón recomendado: pedir siempre un token fresco al abrir
+      // y permitir refresh cuando el runtime lo pida. :contentReference[oaicite:1]{index=1}
+      const res = await fetch(SESSION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deviceId, currentClientSecret: current || null })
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(()=> "");
+        throw new Error("No se pudo crear/refresh la sesión: " + txt);
       }
+      const data = await res.json();
+      return data.client_secret;
+    }
 
-      /* Botón flotante */
-      #chat-launcher{
-        position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-        width:56px; height:56px; border:none; border-radius:50%;
-        background:var(--fab); color:#fff; font-size:22px; cursor:pointer; z-index:9999;
-        box-shadow: 0 6px 20px rgba(0,0,0,.2);
-        transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
-      }
+    // Espera a que el web component esté listo (evita “is not a function”)
+    async function waitForChatkit() {
+      if (customElements.get("openai-chatkit")) return;
+      await customElements.whenDefined("openai-chatkit");
+    }
 
-      /* Cerrar superpuesto */
-      #chat-close{
-        position:absolute; top:8px; right:8px; width:36px; height:36px;
-        border:none; border-radius:9999px; background:rgba(0,0,0,.55); color:#fff;
-        font-size:20px; line-height:36px; text-align:center; cursor:pointer; z-index:10000; display:none;
-      }
-      .open #chat-close{ display:block; }
+    const shell = document.getElementById("chat-shell");
+    const fab   = document.getElementById("chat-launcher");
+    let mounted = false;
+    let chatEl  = null;
 
-      /* Móvil */
-      @media (max-width:480px){
-        #chat-container{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="chat-container" role="dialog" aria-modal="true">
-      <button id="chat-close" aria-label="Cerrar chat" title="Cerrar">×</button>
-      <!-- aquí se montará ChatKit -->
-    </div>
-    <button id="chat-launcher" aria-controls="chat-container" aria-expanded="false" aria-label="Abrir chat" title="Abrir chat">💬</button>
+    function showShell(show) {
+      shell.style.display = show ? "block" : "none";
+      // Oculta FAB mientras el chat está abierto para que nunca tape el botón enviar
+      fab.classList.toggle("hidden", show);
+    }
 
-    <script>
-      // Endpoints (mismo Railway)
-      const SESSION_URL = "/api/chatkit/session";
-      const TOOLS_BASE  = "/tools";
+    async function mountChatOnce() {
+      if (mounted) return;
+      await waitForChatkit();
 
-      // DOM
-      const container = document.getElementById("chat-container");
-      const launcher  = document.getElementById("chat-launcher");
-      const closer    = document.getElementById("chat-close");
-      const MOBILE_Q  = window.matchMedia("(max-width: 480px)");
+      // Crea el elemento y configura opciones. :contentReference[oaicite:2]{index=2}
+      chatEl = document.createElement("openai-chatkit");
+      chatEl.className = "h-[600px] w-[360px]";
+      shell.appendChild(chatEl);
 
-      // ID estable
-      const deviceIdKey = "ck_device_id";
-      let deviceId = localStorage.getItem(deviceIdKey);
-      if (!deviceId) {
-        deviceId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-        localStorage.setItem(deviceIdKey, deviceId);
-      }
-
-      // Helpers
-      async function postJSON(url, payload){
-        try{
-          const r = await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
-          const data = await r.json().catch(()=> ({}));
-          if(!r.ok) return { ok:false, http_status:r.status, ...data };
-          return data;
-        }catch{
-          return { ok:false, error:"client_fetch_error" };
-        }
-      }
-      async function getClientSecret(){
-        const res = await fetch(SESSION_URL, {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ userId: deviceId })
-        });
-        if(!res.ok) throw new Error("No se pudo crear la sesión");
-        const { client_secret } = await res.json();
-        return client_secret;
-      }
-
-      // Nuevo API: onClientTool
-      async function onClientTool({ name, params }) {
-        switch (name) {
-          case "create_lead":    return await postJSON(TOOLS_BASE + "/create_lead", params);
-          case "schedule_visit": return await postJSON(TOOLS_BASE + "/schedule_visit", params);
-          default: throw new Error(`Herramienta no implementada en cliente: ${name}`);
-        }
-      }
-
-      // Ocultar/mostrar FAB
-      function hideFab(){ launcher.style.opacity="0"; launcher.style.visibility="hidden"; launcher.style.pointerEvents="none"; launcher.style.transform="scale(.92)"; }
-      function showFab(){ launcher.style.opacity=""; launcher.style.visibility=""; launcher.style.pointerEvents=""; launcher.style.transform=""; }
-      let hideTimer = null;
-
-      // Montaje imperativo robusto
-      let mounted = false;
-      let control = null;
-
-      function mountWhenReady(){
-        if (!window.ChatKit || !window.ChatKit.create) {
-          requestAnimationFrame(mountWhenReady);
-          return;
-        }
-        control = window.ChatKit.create({
-          api: { getClientSecret },
-          onClientTool,
-          locale: "es",
-          composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
-          startScreen: {
-            greeting: "¡Hola! Soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
-            prompts: [
-              { label:"Conocer Arquitectura", prompt:"Quiero información del programa de Arquitectura.", icon:"search" },
-              { label:"Costos por correo",    prompt:"Envíenme los costos por correo, por favor.",       icon:"write"  },
-              { label:"Agendar visita",       prompt:"Quiero agendar una visita al campus.",            icon:"calendar"}
-            ]
-          },
-          theme: {
-            color: { accent: { primary: "#0b6b3a" } }, // sin propiedades “raras”
-            radius: "round",
-            density: "normal"
+      chatEl.setOptions({
+        api: { getClientSecret },
+        locale: "es",
+        composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
+        startScreen: {
+          greeting: "¡Hola! Soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
+          prompts: [
+            { label: "Conocer Arquitectura", prompt: "Quiero información del programa de Arquitectura.", icon: "search" },
+            { label: "Costos por correo",    prompt: "Envíenme los costos por correo, por favor.",      icon: "write"  },
+            { label: "Agendar visita",       prompt: "Quiero agendar una visita al campus.",            icon: "calendar" }
+          ]
+        },
+        // Bridge de “client tools” del agente al backend. :contentReference[oaicite:3]{index=3}
+        async onClientTool({ name, params }) {
+          switch (name) {
+            case "create_lead":
+              return await postJSON(TOOLS_BASE + "/create_lead", params);
+            case "schedule_visit":
+              return await postJSON(TOOLS_BASE + "/schedule_visit", params);
+            default:
+              throw new Error("Client tool no reconocida: " + name);
           }
-        });
-
-        mounted = true;
-      }
-
-      function openChat(){
-        if (!mounted) mountWhenReady();
-        // Monta el widget dentro del contenedor
-        window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
-        container.style.display = "block";
-        container.classList.add("open");
-        launcher.setAttribute("aria-expanded","true");
-
-        // móvil: ocultar FAB a los 5s
-        showFab();
-        if (hideTimer) clearTimeout(hideTimer);
-        if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000);
-        // foco al botón cerrar
-        setTimeout(() => closer.focus({ preventScroll:true }), 0);
-      }
-
-      function closeChat(){
-        // devuelve foco al FAB
-        launcher.focus({ preventScroll:true });
-        // sólo ocultamos el contenedor; ChatKit maneja su ciclo internamente
-        container.style.display = "none";
-        container.classList.remove("open");
-        launcher.setAttribute("aria-expanded","false");
-        if (hideTimer) clearTimeout(hideTimer);
-        showFab();
-      }
-
-      launcher.addEventListener("click", () => {
-        const isOpen = container.style.display === "block";
-        if (isOpen) closeChat(); else openChat();
+        },
+        theme: {
+          colorScheme: "light",
+          color: { accent: { primary: "#0b5d3f", level: 2 } }, // verde oscuro
+          radius: "round",
+          density: "normal",
+          typography: { fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial" }
+        }
       });
-      closer.addEventListener("click", closeChat);
 
-      // Reaplica en cambios de tamaño/orientación (Android + teclado)
-      ["resize","orientationchange"].forEach(ev =>
-        window.addEventListener(ev, () => {
-          const open = container.style.display === "block";
-          if (open) { showFab(); if (MOBILE_Q.matches){ if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(hideFab, 5000); } }
-          else showFab();
-        })
-      );
+      mounted = true;
+    }
 
-      // Seguridad: captura errores para que no “se ponga blanco”
-      window.addEventListener("error", (e) => {
-        console.error("Chat error:", e.message);
-      });
-      window.addEventListener("unhandledrejection", (e) => {
-        console.error("Chat promise error:", e.reason);
-      });
-    </script>
-  </body>
+    // Toggle
+    fab.addEventListener("click", async () => {
+      try {
+        await mountChatOnce();
+        const willShow = shell.style.display !== "block";
+        showShell(willShow);
+      } catch (e) {
+        console.error("Error al abrir el chat:", e);
+        alert("No pude abrir el chat. Revisa la consola por detalles.");
+      }
+    });
+
+    // Móvil: esconder FAB 5s después de cargar, reaparece al hacer scroll up
+    const isMobile = matchMedia("(max-width: 480px)").matches;
+    if (isMobile) {
+      setTimeout(() => fab.classList.add("hidden"), 5000);
+      let lastY = window.scrollY;
+      window.addEventListener("scroll", () => {
+        const up = window.scrollY < lastY;
+        fab.classList.toggle("hidden", !up && shell.style.display !== "block");
+        lastY = window.scrollY;
+      }, { passive: true });
+    }
+
+    // Acceso rápido con tecla “c” (desktop)
+    document.addEventListener("keydown", (e) => {
+      if (e.key?.toLowerCase() === "c") fab.click();
+    });
+  })();
+  </script>
+</body>
 </html>
+
 
 
 
