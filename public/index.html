@@ -2,211 +2,99 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Isthmus · Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
-  <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
+  <title>Isthmus · Chat (fallback)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{ --fab:#0b5d3f; --shadow:0 12px 30px rgba(0,0,0,.25); --gap:20px; --size:56px; }
-    *{ box-sizing:border-box } body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; background:#f6f8fb; }
+    *{ box-sizing:border-box } body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; background:#f6f8fb }
     header{ padding:20px; border-bottom:1px solid #eef2f6 } main{ padding:20px }
 
-    #chat-shell{
-      position:fixed; right:20px; bottom:calc(var(--gap) + var(--size) + 12px);
-      width:360px; height:600px; background:#fff; border-radius:12px; overflow:auto;
-      box-shadow:var(--shadow); display:none; z-index:9998; padding:0;
-    }
-    #chat-launcher{
-      position:fixed; right:var(--gap); bottom:var(--gap);
-      width:var(--size); height:var(--size); border:none; border-radius:50%;
-      background:var(--fab); color:#fff; font-size:22px; cursor:pointer; z-index:9999;
-      box-shadow:0 6px 20px rgba(0,0,0,.25);
-      display:inline-flex; align-items:center; justify-content:center;
-      transition:opacity .25s, transform .25s;
-    }
-    #chat-launcher.hidden{ opacity:0; transform:translateY(10px); pointer-events:none }
+    #panel{ position:fixed; right:20px; bottom:calc(var(--gap) + var(--size) + 12px); width:360px; height:600px;
+      display:none; background:#fff; border-radius:12px; box-shadow:var(--shadow); overflow:hidden; z-index:9998; }
+    #fab{ position:fixed; right:var(--gap); bottom:var(--gap); width:var(--size); height:var(--size);
+      border:none; border-radius:50%; background:var(--fab); color:#fff; font-size:22px; cursor:pointer; z-index:9999;
+      display:inline-flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(0,0,0,.25); }
+    #head{ padding:10px 12px; border-bottom:1px solid #eef2f6; display:flex; align-items:center; gap:8px }
+    #close{ margin-left:auto; border:none; background:#0f172a; color:#fff; padding:8px 10px; border-radius:8px; cursor:pointer }
 
-    .bar{ display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid #eef2f6; background:#fff; position:sticky; top:0; z-index:10 }
-    .bar button{ border:none; border-radius:8px; padding:8px 10px; cursor:pointer; font:inherit }
-    .b-close{ background:#0f172a; color:#fff }
-    .b-lite { background:#0b5d3f; color:#fff }
-    .hint{ font-size:12px; color:#64748b; margin-left:auto }
+    #log{ padding:12px; height:calc(100% - 56px - 56px); overflow:auto; background:#f9fafb }
+    .msg{ max-width:82%; padding:10px 12px; border-radius:14px; margin:8px 0; line-height:1.35 }
+    .me{ background:#e6f3ec; margin-left:auto }
+    .bot{ background:#fff; border:1px solid #e5e7eb }
 
-    /* Lite UI */
-    .lite{ padding:12px }
-    .lite h3{ margin:10px 0 6px }
-    .lite form{ display:grid; gap:8px; margin:8px 0 16px }
-    .lite input,.lite select,.lite textarea{ width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:10px; font:inherit }
-    .lite button{ background:#0b5d3f; color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer }
-    .ok{ color:#0b5d3f } .err{ color:#b91c1c }
+    #composer{ display:flex; gap:8px; padding:10px; border-top:1px solid #eef2f6; background:#fff }
+    #inp{ flex:1; padding:10px 12px; border:1px solid #e2e8f0; border-radius:10px; font:inherit }
+    #send{ background:#0b5d3f; color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer }
 
     @media (max-width:480px){
-      #chat-shell{ right:0; left:0; bottom:0; width:100vw; height:70vh; border-radius:12px 12px 0 0 }
-      #chat-launcher{ bottom:28px }
+      #panel{ right:0; left:0; bottom:0; width:100vw; height:70vh; border-radius:12px 12px 0 0 }
+      #fab{ bottom:28px }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Demo Isthmus</h1>
-    <p>Abre el chat abajo a la derecha.</p>
+    <p>Chat conversacional de respaldo (sin dependencias de terceros en el navegador).</p>
   </header>
-  <main><p>Contenido de ejemplo…</p></main>
+  <main><p>Pregúntame por programas, costos por correo o agenda una visita.</p></main>
 
-  <div id="chat-shell" role="dialog" aria-modal="true">
-    <div class="bar">
-      <button class="b-close" id="btn-close">Cerrar</button>
-      <button class="b-lite"  id="btn-lite">Usar modo simple</button>
-      <span class="hint">Si ves blanco, usa “modo simple”.</span>
+  <div id="panel" role="dialog" aria-modal="true">
+    <div id="head">
+      <strong>Asesor ISTHMUS</strong>
+      <button id="close">Cerrar</button>
     </div>
-    <div id="chat-host"></div>
+    <div id="log"></div>
+    <div id="composer">
+      <input id="inp" placeholder="Escribe tu mensaje…" />
+      <button id="send">Enviar</button>
+    </div>
   </div>
-  <button id="chat-launcher" aria-label="Abrir chat">💬</button>
+  <button id="fab" aria-label="Abrir chat">💬</button>
 
   <script>
-  (function(){
-    const SESSION_URL = "/api/chatkit/session";
-    const TOOLS_BASE  = "/tools";
+    const panel = document.getElementById("panel");
+    const fab   = document.getElementById("fab");
+    const close = document.getElementById("close");
+    const log   = document.getElementById("log");
+    const inp   = document.getElementById("inp");
+    const send  = document.getElementById("send");
 
-    const shell = document.getElementById("chat-shell");
-    const host  = document.getElementById("chat-host");
-    const fab   = document.getElementById("chat-launcher");
-    const bClose= document.getElementById("btn-close");
-    const bLite = document.getElementById("btn-lite");
-    const MOBILE = matchMedia("(max-width:480px)").matches;
+    function openPanel(){ panel.style.display="block"; inp.focus(); setTimeout(()=> { fab.style.display="none"; }, 0); }
+    function closePanel(){ panel.style.display="none"; fab.style.display="inline-flex"; }
 
-    // ID estable
-    const key = "ck_device_id";
-    let deviceId = localStorage.getItem(key);
-    if(!deviceId){ deviceId = (crypto?.randomUUID?.()||String(Date.now())); localStorage.setItem(key, deviceId); }
-
-    // Helpers
-    async function postJSON(url, payload){
-      const r = await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
-      let data={}; try{ data = await r.json(); }catch{}
-      if(!r.ok) throw new Error((data && (data.error||data.status)) || ("HTTP "+r.status));
-      return data;
-    }
-    async function getClientSecret(cur){
-      const r = await fetch(SESSION_URL,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ userId: deviceId, currentClientSecret: cur||null }) });
-      if(!r.ok){ throw new Error("session "+r.status); }
-      const j = await r.json(); return j.client_secret;
+    function add(role, text){
+      const div = document.createElement("div");
+      div.className = "msg " + (role==="user" ? "me":"bot");
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
     }
 
-    function showShell(show){ shell.style.display = show? "block":"none"; fab.classList.toggle("hidden", show); }
-
-    // Lite UI
-    function mountLite(){
-      host.innerHTML = `
-        <div class="lite">
-          <h3>Enviar <b>costos</b> por correo</h3>
-          <form id="f-lead">
-            <input name="full_name" placeholder="Nombre completo" required />
-            <input type="email" name="email" placeholder="Email" required />
-            <input name="phone" placeholder="Teléfono" required />
-            <select name="program_interest" required>
-              <option value="">Programa de interés</option>
-              <option>Arquitectura</option><option>Arquitectura Interior</option>
-              <option>Diseño Industrial</option><option>Diseño y Comunicación</option>
-            </select>
-            <textarea name="notes" placeholder="Notas (opcional)"></textarea>
-            <input type="hidden" name="language" value="es"/>
-            <input type="hidden" name="source_channel" value="web"/>
-            <input type="hidden" name="consent_personal_data" value="yes"/>
-            <input type="hidden" name="privacy_ack" value="yes"/>
-            <input type="hidden" name="costs_email_requested" value="yes"/>
-            <button type="submit">Solicitar costos</button>
-            <div id="m-lead" class="hint"></div>
-          </form>
-
-          <h3>Agendar visita/llamada</h3>
-          <form id="f-cita">
-            <select name="modality" required>
-              <option value="">Modalidad</option>
-              <option value="presencial">Presencial</option>
-              <option value="virtual">Virtual</option>
-            </select>
-            <input name="preferred_dt_local" placeholder="Fecha y hora (ej. 2025-10-16T11:00:00-05:00)" required />
-            <input name="name" placeholder="Tu nombre" required />
-            <input type="email" name="email" placeholder="Email" required />
-            <input name="phone" placeholder="Teléfono" required />
-            <input name="program_interest" placeholder="Programa (opcional)" />
-            <textarea name="notes" placeholder="Notas (opcional)"></textarea>
-            <button type="submit">Registrar solicitud</button>
-            <div id="m-cita" class="hint"></div>
-          </form>
-        </div>
-      `;
-      const lead = host.querySelector("#f-lead");
-      const mLead= host.querySelector("#m-lead");
-      lead.onsubmit = async (e)=>{ e.preventDefault(); const p = Object.fromEntries(new FormData(lead).entries());
-        mLead.textContent="Enviando…"; try{ await postJSON(TOOLS_BASE+"/create_lead", p);
-          mLead.innerHTML='<span class="ok">Listo. Te enviamos los costos por correo.</span>'; lead.reset();
-        }catch{ mLead.innerHTML='<span class="err">No se pudo registrar. Intenta luego.</span>'; }
-      };
-      const cita = host.querySelector("#f-cita");
-      const mCita= host.querySelector("#m-cita");
-      cita.onsubmit = async (e)=>{ e.preventDefault(); const fd=new FormData(cita);
-        const payload = { modality:fd.get("modality"), preferred_dt_local:fd.get("preferred_dt_local"),
-          contact:{ name:fd.get("name"), email:fd.get("email"), phone:fd.get("phone") },
-          program_interest: fd.get("program_interest")||"", notes: fd.get("notes")||"" };
-        mCita.textContent="Registrando…"; try{ await postJSON(TOOLS_BASE+"/schedule_visit", payload);
-          mCita.innerHTML='<span class="ok">Solicitud registrada. Confirmaremos por correo/teléfono.</span>'; cita.reset();
-        }catch{ mCita.innerHTML='<span class="err">Fallo de registro. El equipo hará seguimiento manual.</span>'; }
-      };
-    }
-
-    // ChatKit (web component)
-    let mounted = false;
-    async function mountChat(){
-      if (mounted) return;
-      if (!customElements.get("openai-chatkit")) await customElements.whenDefined("openai-chatkit");
-      const el = document.createElement("openai-chatkit");
-      el.className = "h-[600px] w-[360px]";
-      host.replaceChildren(el);
-      el.setOptions({
-        api:{ getClientSecret },
-        locale:"es",
-        composer:{ placeholder:"Pregúntame por programas, requisitos o agenda una visita…" },
-        startScreen:{
-          greeting:"¡Hola! Soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
-          prompts:[
-            {label:"Conocer Arquitectura", prompt:"Quiero información del programa de Arquitectura.", icon:"search"},
-            {label:"Costos por correo",    prompt:"Envíenme los costos por correo, por favor.",      icon:"write"},
-            {label:"Agendar visita",       prompt:"Quiero agendar una visita al campus.",            icon:"calendar"}
-          ]
-        },
-        async onClientTool({name, params}){
-          if (name==="create_lead")    return await postJSON(TOOLS_BASE+"/create_lead", params);
-          if (name==="schedule_visit") return await postJSON(TOOLS_BASE+"/schedule_visit", params);
-          throw new Error("tool desconocida: "+name);
-        },
-        theme:{ color:{ accent:{ primary:"#0b5d3f", level:2 } }, radius:"round", density:"normal" }
-      });
-      mounted = true;
-    }
-
-    async function openPanel(){
-      showShell(true);
-      // Intento normal
-      try { await mountChat(); }
-      catch(e){
-        console.warn("Fallo montando ChatKit. Activando modo simple:", e);
-        mountLite();
+    async function ask(text){
+      add("user", text);
+      inp.value = ""; send.disabled = true;
+      try{
+        const r = await fetch("/api/agent_chat", {
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ text })
+        });
+        const j = await r.json();
+        add("assistant", j.reply || "Listo.");
+      }catch(e){
+        add("assistant", "Hubo un problema temporal. Intenta de nuevo o déjame tu correo y teléfono para contactarte.");
+      }finally{
+        send.disabled = false; inp.focus();
       }
     }
-    function closePanel(){ showShell(false); if (MOBILE) setTimeout(()=>fab.classList.add("hidden"), 5000); }
 
-    fab.addEventListener("click", ()=>{ const open = shell.style.display==="block"; open? closePanel(): openPanel(); });
-    bClose.addEventListener("click", closePanel);
-    bLite .addEventListener("click", ()=>{ mountLite(); });
-
-    // Auto-ocultar FAB en móvil a los 5s cuando el panel esté cerrado
-    if (MOBILE) setTimeout(()=>fab.classList.add("hidden"), 5000);
-  })();
+    send.onclick = () => { const t = inp.value.trim(); if (t) ask(t); };
+    inp.onkeydown = (e)=>{ if (e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send.click(); } };
+    fab.onclick = openPanel; close.onclick = closePanel;
   </script>
 </body>
 </html>
+
 
 
 
