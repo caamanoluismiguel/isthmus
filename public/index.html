@@ -34,7 +34,7 @@
         background:#fff; border-radius:12px; overflow:hidden; box-shadow: var(--shadow);
       }
 
-      /* Botón de cerrar superpuesto dentro del chat */
+      /* Botón de cerrar dentro del chat */
       #chat-close{
         position:absolute; top:8px; right:8px; width:36px; height:36px;
         border:none; border-radius:9999px; background:rgba(0,0,0,.55); color:#fff;
@@ -43,21 +43,15 @@
       .open #chat-close{ display:block; }
 
       @media (max-width: 480px){
-        #chat-shell{
-          width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0;
-        }
+        #chat-shell{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
       }
     </style>
   </head>
   <body>
-
-    <!-- Contenedor del chat (web component dentro) -->
     <div id="chat-shell" aria-hidden="true">
       <button id="chat-close" aria-label="Cerrar chat" title="Cerrar">×</button>
       <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
     </div>
-
-    <!-- Botón flotante -->
     <button id="chat-launcher" aria-label="Abrir chat" title="Abrir chat">💬</button>
 
     <script>
@@ -72,7 +66,7 @@
       const closer  = document.getElementById("chat-close");
       const MOBILE_Q = window.matchMedia("(max-width: 480px)");
 
-      // ID estable (por navegador)
+      // ID estable por navegador
       const deviceIdKey = "ck_device_id";
       let deviceId = localStorage.getItem(deviceIdKey);
       if (!deviceId) {
@@ -80,7 +74,7 @@
         localStorage.setItem(deviceIdKey, deviceId);
       }
 
-      // Helpers de red (tolerantes a errores)
+      // Helpers de red
       async function postJSON(url, payload){
         try{
           const r = await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
@@ -91,12 +85,6 @@
           return { ok:false, error:"client_fetch_error" };
         }
       }
-
-      const clientTools = {
-        create_lead:    (args)=> postJSON(TOOLS_BASE + "/create_lead", args),
-        schedule_visit: (args)=> postJSON(TOOLS_BASE + "/schedule_visit", args),
-      };
-
       async function getClientSecret(){
         const res = await fetch(SESSION_URL, {
           method:"POST",
@@ -108,7 +96,7 @@
         return client_secret;
       }
 
-      // Mostrar / ocultar FAB
+      // FAB show/hide
       function hideFab(){ fab.style.opacity="0"; fab.style.visibility="hidden"; fab.style.pointerEvents="none"; fab.style.transform="scale(.92)"; }
       function showFab(){ fab.style.opacity=""; fab.style.visibility=""; fab.style.pointerEvents=""; fab.style.transform=""; }
       let hideTimer = null;
@@ -122,7 +110,19 @@
         }
         el.setOptions({
           api: { getClientSecret },
-          tools: clientTools,
+
+          // ⬇️ Nueva forma: manejar client tools con un callback
+          async onClientTool({ name, params }) {
+            switch (name) {
+              case "create_lead":
+                return await postJSON(TOOLS_BASE + "/create_lead", params);
+              case "schedule_visit":
+                return await postJSON(TOOLS_BASE + "/schedule_visit", params);
+              default:
+                throw new Error(`Herramienta no implementada en cliente: ${name}`);
+            }
+          },
+
           locale: "es",
           composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
           startScreen: {
@@ -133,7 +133,13 @@
               { label:"Agendar visita",       prompt:"Quiero agendar una visita al campus.",            icon:"calendar"}
             ]
           },
-          theme: { color: { accent: { primary: getComputedStyle(document.documentElement).getPropertyValue('--fab').trim() || "#0b6b3a" } } }
+
+          // Tema: valor fijo válido (evita primaria vacía)
+          theme: {
+            color: { accent: { primary: "#0b6b3a", level: 2 } },
+            radius: "round",
+            density: "normal"
+          }
         });
         configured = true;
       }
@@ -144,10 +150,9 @@
         shell.style.display = "block";
         shell.classList.add("open");
         shell.setAttribute("aria-hidden","false");
-        // Muestra el FAB y prográmalo para ocultarse a los 5s en móviles
         showFab();
         if (hideTimer) clearTimeout(hideTimer);
-        if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000);
+        if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000); // auto-oculta en móvil
       }
       function closeChat(){
         shell.style.display = "none";
@@ -179,3 +184,4 @@
     </script>
   </body>
 </html>
+
