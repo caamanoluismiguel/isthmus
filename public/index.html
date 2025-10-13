@@ -19,6 +19,13 @@
       *{box-sizing:border-box}
       body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
 
+      /* Contenedor del chat (lo montamos dentro) */
+      #chat-container{
+        position: fixed; right: 20px; bottom: 88px; width: 360px; height: 600px;
+        background:#fff; border-radius:12px; overflow:hidden; box-shadow: var(--shadow);
+        display:none; z-index: 9998;
+      }
+
       /* Botón flotante */
       #chat-launcher{
         position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
@@ -28,13 +35,7 @@
         transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
       }
 
-      /* Contenedor del chat */
-      #chat-shell{
-        position: fixed; right: 20px; bottom: 88px; width: 360px; height: 600px; z-index: 9998; display: none;
-        background:#fff; border-radius:12px; overflow:hidden; box-shadow: var(--shadow);
-      }
-
-      /* Botón de cerrar dentro del chat */
+      /* Cerrar superpuesto */
       #chat-close{
         position:absolute; top:8px; right:8px; width:36px; height:36px;
         border:none; border-radius:9999px; background:rgba(0,0,0,.55); color:#fff;
@@ -42,33 +43,31 @@
       }
       .open #chat-close{ display:block; }
 
-      @media (max-width: 480px){
-        #chat-shell{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
+      /* Móvil */
+      @media (max-width:480px){
+        #chat-container{ width:100vw; height:70vh; right:0; left:0; bottom:0; border-radius:0; }
       }
     </style>
   </head>
   <body>
-    <!-- Contenedor del chat: SIN aria-hidden; usa semántica de diálogo -->
-    <div id="chat-shell" role="dialog" aria-modal="true">
+    <div id="chat-container" role="dialog" aria-modal="true">
       <button id="chat-close" aria-label="Cerrar chat" title="Cerrar">×</button>
-      <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
+      <!-- aquí se montará ChatKit -->
     </div>
-
-    <!-- Botón flotante -->
-    <button id="chat-launcher" aria-controls="chat-shell" aria-expanded="false" aria-label="Abrir chat" title="Abrir chat">💬</button>
+    <button id="chat-launcher" aria-controls="chat-container" aria-expanded="false" aria-label="Abrir chat" title="Abrir chat">💬</button>
 
     <script>
+      // Endpoints (mismo Railway)
       const SESSION_URL = "/api/chatkit/session";
       const TOOLS_BASE  = "/tools";
 
       // DOM
-      const shell   = document.getElementById("chat-shell");
-      const el      = document.getElementById("isthmus-chat");
-      const fab     = document.getElementById("chat-launcher");
-      const closer  = document.getElementById("chat-close");
-      const MOBILE_Q = window.matchMedia("(max-width: 480px)");
+      const container = document.getElementById("chat-container");
+      const launcher  = document.getElementById("chat-launcher");
+      const closer    = document.getElementById("chat-close");
+      const MOBILE_Q  = window.matchMedia("(max-width: 480px)");
 
-      // ID estable por navegador
+      // ID estable
       const deviceIdKey = "ck_device_id";
       let deviceId = localStorage.getItem(deviceIdKey);
       if (!deviceId) {
@@ -76,7 +75,7 @@
         localStorage.setItem(deviceIdKey, deviceId);
       }
 
-      // Helpers de red
+      // Helpers
       async function postJSON(url, payload){
         try{
           const r = await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
@@ -98,7 +97,7 @@
         return client_secret;
       }
 
-      // Client tools via callback (nuevo API)
+      // Nuevo API: onClientTool
       async function onClientTool({ name, params }) {
         switch (name) {
           case "create_lead":    return await postJSON(TOOLS_BASE + "/create_lead", params);
@@ -107,21 +106,23 @@
         }
       }
 
-      // FAB show/hide
-      function hideFab(){ fab.style.opacity="0"; fab.style.visibility="hidden"; fab.style.pointerEvents="none"; fab.style.transform="scale(.92)"; }
-      function showFab(){ fab.style.opacity=""; fab.style.visibility=""; fab.style.pointerEvents=""; fab.style.transform=""; }
+      // Ocultar/mostrar FAB
+      function hideFab(){ launcher.style.opacity="0"; launcher.style.visibility="hidden"; launcher.style.pointerEvents="none"; launcher.style.transform="scale(.92)"; }
+      function showFab(){ launcher.style.opacity=""; launcher.style.visibility=""; launcher.style.pointerEvents=""; launcher.style.transform=""; }
       let hideTimer = null;
 
-      // Montaje SEGURO del web component
-      let configured = false;
-      async function ensureChatConfigured(){
-        if (configured) return;
-        if (!customElements.get("openai-chatkit")) {
-          await customElements.whenDefined("openai-chatkit");
+      // Montaje imperativo robusto
+      let mounted = false;
+      let control = null;
+
+      function mountWhenReady(){
+        if (!window.ChatKit || !window.ChatKit.create) {
+          requestAnimationFrame(mountWhenReady);
+          return;
         }
-        el.setOptions({
+        control = window.ChatKit.create({
           api: { getClientSecret },
-          onClientTool,        // <<— en vez de "tools"
+          onClientTool,
           locale: "es",
           composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
           startScreen: {
@@ -133,61 +134,67 @@
             ]
           },
           theme: {
-            color: { accent: { primary: "#0b6b3a", level: 2 } },
+            color: { accent: { primary: "#0b6b3a" } }, // sin propiedades “raras”
             radius: "round",
             density: "normal"
           }
         });
-        configured = true;
+
+        mounted = true;
       }
 
-      // Abrir / cerrar (sin aria-hidden)
-      async function openChat(){
-        await ensureChatConfigured();
-        shell.style.display = "block";
-        shell.classList.add("open");
-        fab.setAttribute("aria-expanded","true");
-        // En móviles: oculta FAB a los 5s
+      function openChat(){
+        if (!mounted) mountWhenReady();
+        // Monta el widget dentro del contenedor
+        window.ChatKit({ control, className: "h-[600px] w-[360px]" }).mount(container);
+        container.style.display = "block";
+        container.classList.add("open");
+        launcher.setAttribute("aria-expanded","true");
+
+        // móvil: ocultar FAB a los 5s
         showFab();
         if (hideTimer) clearTimeout(hideTimer);
         if (MOBILE_Q.matches) hideTimer = setTimeout(hideFab, 5000);
-        // Lleva el foco al contenido del diálogo
-        setTimeout(() => {
-          const focusable = shell.querySelector("#chat-close") || shell.querySelector("button, [tabindex]:not([tabindex='-1'])");
-          if (focusable) focusable.focus({ preventScroll:true });
-        }, 0);
+        // foco al botón cerrar
+        setTimeout(() => closer.focus({ preventScroll:true }), 0);
       }
+
       function closeChat(){
-        // Devuelve foco al botón flotante ANTES de ocultar
-        fab.focus({ preventScroll:true });
-        shell.style.display = "none";
-        shell.classList.remove("open");
-        fab.setAttribute("aria-expanded","false");
+        // devuelve foco al FAB
+        launcher.focus({ preventScroll:true });
+        // sólo ocultamos el contenedor; ChatKit maneja su ciclo internamente
+        container.style.display = "none";
+        container.classList.remove("open");
+        launcher.setAttribute("aria-expanded","false");
         if (hideTimer) clearTimeout(hideTimer);
         showFab();
       }
 
-      fab.addEventListener("click", async () => {
-        try{
-          const open = shell.style.display === "block";
-          if (open) closeChat(); else openChat();
-        }catch(e){
-          console.error("Error abriendo el chat:", e);
-          alert("No se pudo iniciar el chat. Intenta nuevamente.");
-        }
+      launcher.addEventListener("click", () => {
+        const isOpen = container.style.display === "block";
+        if (isOpen) closeChat(); else openChat();
       });
       closer.addEventListener("click", closeChat);
 
       // Reaplica en cambios de tamaño/orientación (Android + teclado)
       ["resize","orientationchange"].forEach(ev =>
         window.addEventListener(ev, () => {
-          const open = shell.style.display === "block";
+          const open = container.style.display === "block";
           if (open) { showFab(); if (MOBILE_Q.matches){ if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(hideFab, 5000); } }
           else showFab();
         })
       );
+
+      // Seguridad: captura errores para que no “se ponga blanco”
+      window.addEventListener("error", (e) => {
+        console.error("Chat error:", e.message);
+      });
+      window.addEventListener("unhandledrejection", (e) => {
+        console.error("Chat promise error:", e.reason);
+      });
     </script>
   </body>
 </html>
+
 
 
