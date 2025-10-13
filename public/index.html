@@ -105,13 +105,13 @@
       return j.client_secret;
     }
 
-    // Client tools → mapeadas a tus endpoints
+    // Client tools → mapeadas a tus endpoints (y KB)
     async function onClientTool({ name, params }) {
-      // Limpia el campo "tool" (constante del JSON Schema estricto)
       const { tool, ...clean } = params || {};
       console.log("[ClientTool]", name, clean);
       if (name === "create_lead")    return await postJSON(TOOLS_BASE + "/create_lead", clean);
       if (name === "schedule_visit") return await postJSON(TOOLS_BASE + "/schedule_visit", clean);
+      if (name === "search_kb")      return await postJSON(TOOLS_BASE + "/search_kb", clean); // ⬅️ NUEVO
       throw new Error("tool no implementada: " + name);
     }
 
@@ -155,7 +155,6 @@
         if (isOpen) { showShell(false); return; }
         if (!configured) { await ensureReady(); configured = true; }
         showShell(true);
-        // En móvil, si cierras, oculta FAB a los 5s para que no estorbe
         if (MOBILE && !isOpen)
           setTimeout(()=>{ if (shell.style.display !== "block") fab.classList.add("hidden"); }, 5000);
       } catch (e) {
@@ -164,7 +163,6 @@
       }
     });
 
-    // Captura errores globales del runtime (evita pantalla en blanco silenciosa)
     window.addEventListener("unhandledrejection", (e) => {
       console.error("ChatKit error:", e.reason);
       alert("Tu navegador/red bloquea conexiones necesarias para el chat. Desactiva extensiones de bloqueo o prueba en otra red.");
