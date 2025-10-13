@@ -10,7 +10,7 @@ const {
   CHATKIT_WORKFLOW_ID,
 
   // CORS
-  ALLOWED_ORIGIN,            // p.ej. https://www.semeocurrioalgo.com
+  ALLOWED_ORIGIN,            // p.ej. https://www.tudominio.com
   ALLOWED_ORIGINS_EXTRA,     // opcional: coma-separada
 
   // Google Sheets (Service Account)
@@ -20,16 +20,22 @@ const {
   SHEET_TAB_LEADS,           // opcional, default "Leads"
   SHEET_TAB_CITAS,           // opcional, default "Citas"
 
-  // Google Calendar (OAuth)
+  // Google Calendar (OAuth 2.0 con refresh_token)
   CLIENT_ID,
   CLIENT_SECRET,
-  GOOGLE_OAUTH_TOKEN_JSON,   // JSON con refresh_token
-  CALENDAR_ID,               // p.ej. "primary" o ID de calendario
+  GOOGLE_OAUTH_TOKEN_JSON,   // JSON del Playground con "refresh_token"
+
+  // Calendar ID (p.ej. "primary")
+  CALENDAR_ID,
+
+  // Debug (opcional)
+  DEBUG_SECRET
 } = process.env;
 
 const TAB_LEADS = SHEET_TAB_LEADS || "Leads";
 const TAB_CITAS = SHEET_TAB_CITAS || "Citas";
 const PANAMA_TZ = "America/Panama";
+const CAL_ID = CALENDAR_ID || "primary";
 
 // ---------- APP ----------
 const app = express();
@@ -126,7 +132,7 @@ function parseLocalPanama(input) {
     if (ampm === "pm" && hour < 12) hour += 12;
     if (ampm === "am" && hour === 12) hour = 0;
   }
-  // Construye el instante UTC equivalente a la hora local en Panamá (UTC-5, sin DST).
+  // Panamá UTC-5: construimos el instante UTC equivalente a la hora local
   return new Date(Date.UTC(year, Number(mm) - 1, Number(dd), hour + 5, minute));
 }
 
@@ -170,8 +176,6 @@ app.post("/tools/create_lead", async (req, res) => {
 app.post("/tools/schedule_visit", async (req, res) => {
   const p = req.body || {};
   try {
-    if (!CALENDAR_ID) return res.status(500).json({ ok: false, error: "missing_CALENDAR_ID" });
-
     // Validar mínimos
     if (!p.modality) return res.status(400).json({ ok: false, error: "missing_modality" });
     if (!p.preferred_dt_local) return res.status(400).json({ ok: false, error: "missing_preferred_dt_local" });
@@ -198,13 +202,13 @@ app.post("/tools/schedule_visit", async (req, res) => {
     ].filter(Boolean).join("\n");
 
     const ev = await calendar.events.insert({
-      calendarId: CALENDAR_ID,
+      calendarId: CAL_ID, // "primary" por defecto
       requestBody: {
         summary,
         description,
         start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
         end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ },
-        // Si quieres invitar al contacto como asistente:
+        // Si quieres invitar al contacto:
         // attendees: [{ email: p.contact.email }],
       },
     });
@@ -242,6 +246,48 @@ app.post("/tools/schedule_visit", async (req, res) => {
       console.error("append fallback failed:", e?.response?.data || e);
     }
     return res.status(200).json({ ok: false, status: "manual_followup" });
+  }
+});
+
+// ---------- DEBUG (opcional): protege con DEBUG_SECRET ----------
+function requireDebugSecret(req, res, next) {
+  if (!DEBUG_SECRET) return next(); // sin secreto, queda abierto (útil en desarrollo)
+  const sent = req.get("x-debug-secret");
+  if (sent === DEBUG_SECRET) return next();
+  return res.status(403).json({ ok: false, error: "forbidden" });
+}
+
+app.get("/debug/calendar-list", requireDebugSecret, async (req, res) => {
+  try {
+    const calendar = calendarApi();
+    const r = await calendar.calendarList.list();
+    const items = (r.data.items || []).map(i => ({
+      id: i.id, summary: i.summary, primary: !!i.primary
+    }));
+    return res.json({ ok: true, items });
+  } catch (e) {
+    console.error("debug calendar-list error:", e?.response?.data || e);
+    return res.status(200).json({ ok: false, error: (e?.response?.data || e?.message || "fail") });
+  }
+});
+
+app.post("/debug/calendar-insert", requireDebugSecret, async (req, res) => {
+  try {
+    const calendar = calendarApi();
+    const start = new Date(Date.now() + 15 * 60 * 1000);
+    const end   = new Date(start.getTime() + 60 * 60 * 1000);
+    const ev = await calendar.events.insert({
+      calendarId: CAL_ID,
+      requestBody: {
+        summary: "Debug Visit",
+        start: { dateTime: start.toISOString(), timeZone: PANAMA_TZ },
+        end:   { dateTime: end.toISOString(),   timeZone: PANAMA_TZ }
+      }
+    });
+    return res.json({ ok: true, eventId: ev.data.id, htmlLink: ev.data.htmlLink });
+  } catch (e) {
+    console.error("debug calendar-insert error:", e?.response?.data || e);
+    return res.status(200).json({ ok: false, error: (e?.response?.data || e?.message || "fail") });
   }
 });
 
