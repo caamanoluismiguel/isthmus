@@ -2,19 +2,18 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Isthmus · ChatAgent</title>
+  <title>Isthmus · YoQuieroEstudiar + Chat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-  <!-- ChatKit runtime -->
+  <!-- ChatKit runtime (no tocar) -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
-
-  <!-- Verificación de dominio (domain_pk) -->
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
+  <!-- ===== Estilos base del sitio / chat (mantengo los tuyos) ===== -->
   <style>
     :root{ --fab:#0b5d3f; --gap:20px; --size:56px; --shadow:0 12px 30px rgba(0,0,0,.25); }
     *{ box-sizing:border-box }
-    body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; }
+    body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; color:#0f172a; }
 
     #chat-shell{
       position: fixed; right: 20px; bottom: calc(var(--gap) + var(--size) + 12px);
@@ -35,23 +34,358 @@
     }
 
     header{ padding: 18px 20px; border-bottom: 1px solid #eef2f6; }
-    main{ padding: 20px; }
+    main{ padding: 0; }
+  </style>
+
+  <!-- ===== Estilos namespaced del TEST (no tocan <body>) ===== -->
+  <style>
+    .yqe { --bg1:#0f172a;--bg2:#020617;--brand:#1498ff;--pink:#ff3ea5;--green:#2ef2a6;--yellow:#ffd426;--card:rgba(255,255,255,.06);--cardb:rgba(255,255,255,.12);--text:#fff;--muted:rgba(255,255,255,.75);--ink:#0f172a;
+           color:var(--text);
+           background:
+             radial-gradient(1200px 600px at 10% -10%, rgba(255,62,165,.25), transparent 60%),
+             radial-gradient(1000px 500px at 90% 0%, rgba(46,242,166,.25), transparent 60%),
+             radial-gradient(900px 500px at 80% 100%, rgba(122,92,255,.25), transparent 60%),
+             linear-gradient(180deg,var(--bg1),var(--bg2));
+    }
+    .yqe a{color:inherit}
+    .yqe .wrap{min-height:100%;display:flex;flex-direction:column}
+    .yqe .sitebar{padding:16px 20px}
+    .yqe .logo{display:flex;gap:12px;align-items:center;font-weight:900;font-size:22px}
+    .yqe .badge{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,var(--pink),var(--brand));box-shadow:0 0 0 6px rgba(20,152,255,.12)}
+    .yqe .hero{padding:24px 20px;text-align:center}
+    .yqe .h1{font-size:clamp(40px,6vw,72px);line-height:1.02;font-weight:900;letter-spacing:-.02em}
+    .yqe .gradient{background:linear-gradient(90deg,var(--pink),var(--yellow),var(--green));-webkit-background-clip:text;background-clip:text;color:transparent}
+    .yqe .lead{max-width:900px;margin:10px auto 0;color:var(--muted);font-size:20px}
+    .yqe .cta-row{display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+    .yqe .btn{border:0;padding:16px 22px;border-radius:18px;font-weight:800;cursor:pointer;font-size:18px;transition:transform .15s ease, box-shadow .15s ease, filter .15s ease}
+    .yqe .btn-primary{background:var(--brand);color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.25), 0 0 0 6px rgba(20,152,255,.12)}
+    .yqe .btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 6px 0 rgba(0,0,0,.25), 0 0 0 6px rgba(20,152,255,.16)}
+    .yqe .btn-primary:active{transform:translateY(0);filter:brightness(0.98)}
+    .yqe .btn-primary:focus-visible{outline: none; box-shadow:0 0 0 4px rgba(255,212,38,.9), 0 0 0 10px rgba(20,152,255,.18);}
+    .yqe .btn-ghost{background:transparent;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+    .yqe main{flex:1;padding:0 16px 80px}
+    .yqe .container{max-width:900px;margin:0 auto}
+    .yqe .hidden{display:none}
+    .yqe .card{background:var(--card);border:1px solid var(--cardb);border-radius:24px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    .yqe .progress{height:12px;width:100%;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
+    .yqe .bar{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),var(--brand),var(--green))}
+    .yqe .grid{display:grid;gap:12px}
+    @media(min-width:720px){.yqe .grid-4{grid-template-columns:repeat(4,1fr)}}
+    @media(max-width:719.98px){.yqe .grid-4{grid-template-columns:repeat(2,1fr)}}
+    .yqe .choice{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border-radius:16px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.10);cursor:pointer}
+    .yqe .choice.sel{box-shadow:0 0 0 4px rgba(20,152,255,.45)}
+    .yqe .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .yqe .muted{color:var(--muted);font-size:14px}
+    .yqe .how{margin-top:36px;display:grid;gap:16px}
+    @media(min-width:900px){.yqe .how{grid-template-columns:repeat(3,1fr)}}
+    .yqe .card-white{background:#fff;color:var(--ink);border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.35);padding:22px}
+    .yqe .pill{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#475569;font-weight:700}
+    .yqe .title{font-weight:900;font-size:42px;margin:6px 0 0;letter-spacing:-.01em}
+    .yqe .list{margin:6px 0;padding-left:20px}.yqe .list li{margin:2px 0}
+    .yqe .row-gap{display:flex;gap:10px;flex-wrap:wrap}
+    .yqe .note{font-size:12px;color:#64748b}
+    .yqe details{margin-top:12px} .yqe summary{cursor:pointer;font-weight:700}
+    .yqe .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+    .yqe .modal.show{display:flex}
+    .yqe .modal-card{background:#fff;color:#0f172a;max-width:520px;width:100%;border-radius:16px;padding:20px}
+
+    /* Imprimir solo la tarjeta del resultado del test */
+    @media print{
+      body *{visibility:hidden !important}
+      .yqe #result-card, .yqe #result-card *{visibility:visible !important}
+      .yqe #result-card{position:absolute;inset:0;margin:0;box-shadow:none !important;background:#fff !important;color:#000 !important}
+    }
   </style>
 </head>
-<body>
-  <header>
-    <h1>ISTHMUS</h1>
-    <p>Asesor virtual de Admisiones.</p>
-  </header>
-  <main>
-    <p>Abre el chat abajo a la derecha.</p>
-  </main>
 
+<body>
+  <!-- Header del sitio (ligero) -->
+  <header>
+    <h1 style="margin:0">ISTHMUS</h1>
+    <p style="margin:4px 0 12px">Asesor virtual de Admisiones + Test ADN Creativo</p>
+  </header>
+
+  <!-- ====== TEST YoQuieroEstudiar (namespaced) ====== -->
+  <section class="yqe" id="yqe-root" aria-label="Test YoQuieroEstudiar">
+    <div class="wrap">
+      <div class="sitebar">
+        <div class="logo"><div class="badge"></div> YoQuiero<span style="color:#7cd4ff">Estudiar</span>.com</div>
+      </div>
+
+      <section class="hero">
+        <div class="h1">Descubre tu <span class="gradient">ADN creativo</span></div>
+        <p class="lead">Responde en minutos y descubre tu match creativo. Al final te llevas tu perfil en PDF.</p>
+        <div class="cta-row">
+          <button id="btn-start" class="btn btn-primary" style="padding:18px 28px;font-size:20px;border-radius:22px">Empezar ahora — 3–5 min</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('yqe-how').scrollIntoView({behavior:'smooth'})">¿Cómo funciona?</button>
+        </div>
+      </section>
+
+      <main>
+        <div class="container">
+          <div id="quiz" class="hidden">
+            <div style="position:sticky;top:0;backdrop-filter:blur(8px);padding:12px 0;margin-bottom:8px">
+              <div class="row">
+                <div class="progress"><div id="bar" class="bar"></div></div>
+                <div id="step" class="muted">1/12</div>
+              </div>
+            </div>
+
+            <div id="card" class="card">
+              <div class="muted">Pregunta</div>
+              <h2 id="qtext" style="font-size:28px;margin:4px 0 12px">...</h2>
+              <div class="grid grid-4">
+                <button class="choice" data-value="0"><div style="font-size:28px">😶‍🌫️</div><div>Nada</div></button>
+                <button class="choice" data-value="1"><div style="font-size:28px">🙂</div><div>Poco</div></button>
+                <button class="choice" data-value="2"><div style="font-size:28px">🔥</div><div>Bastante</div></button>
+                <button class="choice" data-value="3"><div style="font-size:28px">🚀</div><div>Mucho</div></button>
+              </div>
+              <div class="row" style="margin-top:14px">
+                <button id="prev" class="btn" disabled>◀ Anterior</button>
+                <button id="next" class="btn btn-primary" style="padding:14px 22px">Siguiente ▶</button>
+              </div>
+            </div>
+            <div class="muted" style="text-align:center;margin-top:8px">No es un diagnóstico, es una brújula para conversar.</div>
+          </div>
+
+          <section id="yqe-how" class="how">
+            <div class="card"><div style="font-size:28px">⚡</div><h3>Rápido y visual</h3><p class="muted">Solo 12 preguntas (y 2 extra si hay empate). Terminas en 3–5 min.</p></div>
+            <div class="card"><div style="font-size:28px">🧠</div><h3>Habilidades reales</h3><p class="muted">Soft + hard skills que verás en clase: ARQ, Interior, Industrial y Comunicación Visual.</p></div>
+            <div class="card"><div style="font-size:28px">🎯</div><h3>Resultado útil</h3><p class="muted">Tu carrera sugerida, un mini-reto semanal y un PDF para compartir.</p></div>
+          </section>
+
+          <section id="result" class="hidden" style="margin-top:24px">
+            <div id="result-card" class="card-white">
+              <div class="pill">Tu afinidad creativa</div>
+              <div id="rTitle" class="title">—</div>
+              <p id="rNarrative" style="font-size:18px;margin:8px 0"></p>
+              <div class="row-gap">
+                <div style="flex:1;min-width:260px">
+                  <h4>Soft skills que destacas</h4>
+                  <ul id="rSoft" class="list"></ul>
+                </div>
+                <div style="flex:1;min-width:260px">
+                  <h4>Hard skills a desarrollar</h4>
+                  <ul id="rHard" class="list"></ul>
+                </div>
+              </div>
+              <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:12px">
+                <div class="pill" style="color:#475569">Mini-reto para esta semana</div>
+                <p id="rChallenge" style="margin:6px 0 0"></p>
+              </div>
+              <div class="row-gap" style="margin-top:12px">
+                <button id="btnPDF" class="btn">Descargar perfil (PDF)</button>
+              </div>
+              <details>
+                <summary>Ver resumen</summary>
+                <div class="row-gap" style="font-size:14px;margin-top:6px">
+                  <div><div class="note">Puntajes</div><ul id="rScores" style="margin:6px 0"></ul></div>
+                </div>
+              </details>
+            </div>
+          </section>
+
+          <div id="leadModal" class="modal">
+            <div class="modal-card">
+              <h3 style="margin:0 0 6px;font-size:22px;font-weight:900">Antes de descargar tu perfil</h3>
+              <p style="margin:0 0 10px">Déjanos tu correo para registrar el resultado y luego descargar el PDF.</p>
+              <form id="leadForm">
+                <label for="leadEmail" style="font-weight:700;font-size:14px">Correo electrónico</label>
+                <input id="leadEmail" type="email" required placeholder="tucorreo@dominio.com" style="display:block;margin-top:6px;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px">
+                <small class="note">Se almacena en un inbox seguro (Formspree).</small>
+                <div class="row" style="margin-top:12px">
+                  <button type="submit" class="btn btn-primary">Enviar y descargar</button>
+                  <button type="button" id="leadCancel" class="btn">Cancelar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <p class="note" style="margin:18px 0 0">Zero-backend listo. © <span id="year">2025</span></p>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ====== Contenedor del chat (no tocar) ====== -->
   <div id="chat-shell" role="dialog" aria-modal="true">
     <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
   </div>
   <button id="chat-launcher" aria-label="Abrir chat" aria-controls="chat-shell" aria-expanded="false">💬</button>
 
+  <!-- ===== Script del TEST (aislado y sin globals peligrosos) ===== -->
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const $ = (id) => document.getElementById(id);
+    const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+    setText('year', String(new Date().getFullYear()));
+
+    // Banco de preguntas + pesos
+    const itemsCore = [
+      { id:1,  text:'Puedo imaginar cómo cambiaría un lugar con luz y materiales.', weights:{INT:1, ARQ:0.5} },
+      { id:2,  text:'Me interesa cómo se planean ciudades/edificios y sus reglas.', weights:{ARQ:1} },
+      { id:3,  text:'Disfruto convertir ideas en objetos usables.', weights:{IND:1, ARQ:0.5} },
+      { id:4,  text:'Me sale natural contar ideas con imágenes, colores y tipografías.', weights:{COM:1} },
+      { id:5,  text:'Me fijo en detalles que cambian la atmósfera (texturas, sonido, luz).', weights:{INT:1, COM:0.5} },
+      { id:6,  text:'Me intriga cómo están hechas las cosas y cómo mejorarlas técnicamente.', weights:{IND:1} },
+      { id:7,  text:'Pienso en sistemas y relación entre partes y todo.', weights:{ARQ:1, IND:0.5} },
+      { id:8,  text:'Me emociona diseñar experiencias visuales que cuenten historias.', weights:{COM:1, INT:0.5} },
+      { id:9,  text:'Prefiero prototipar/maquetar a solo hablar de ideas.', weights:{IND:1, ARQ:0.5} },
+      { id:10, text:'Me interesa la luz (natural/artificial) y su efecto en la vida del espacio.', weights:{INT:1, ARQ:0.5} },
+      { id:11, text:'Disfruto preparar presentaciones visuales claras y persuasivas.', weights:{COM:1, ARQ:0.5} },
+      { id:12, text:'Me motivan retos reales con restricciones y usuarios concretos.', weights:{ARQ:0.5, INT:0.5, IND:0.5, COM:0.5} }
+    ];
+
+    const tiebreakers = [
+      { id:13, pair:['ARQ','INT'], text:'Me interesa más la estructura y función del edificio que la atmósfera interior.', yes:'ARQ', no:'INT' },
+      { id:14, pair:['IND','COM'], text:'Prefiero función y fabricación antes que mensaje e identidad.', yes:'IND', no:'COM' },
+      { id:15, pair:['ARQ','IND'], text:'Me veo liderando proyectos a gran escala más que perfeccionando un objeto.', yes:'ARQ', no:'IND' },
+      { id:16, pair:['INT','COM'], text:'Me mueve más la sensación del lugar que la comunicación visual.', yes:'INT', no:'COM' }
+    ];
+
+    const RESULT_TEXT = {
+      ARQ: { title:'Arquitectura', narrative:'Piensas en sistemas, escalas y orden. Te motiva transformar ciudad y edificio con visión y método.',
+             soft:['Pensamiento sistémico','Visualización espacial','Liderazgo de proyectos'],
+             hard:['Dibujo técnico','Modelado 3D','Planeación urbana'],
+             challenge:'Dibuja un mapa de flujo de tu barrio y propone una mejora.' },
+      INT: { title:'Arquitectura Interior', narrative:'Lees la atmósfera: luz, materiales y experiencia humana. Haces que los lugares se sientan bien.',
+             soft:['Empatía','Sensibilidad estética','Atención al detalle'],
+             hard:['Iluminación','Materialidad y acabados','Representación visual'],
+             challenge:'Diseña 2 escenas de luz (día/noche) para una habitación.' },
+      IND: { title:'Diseño Industrial', narrative:'Del concepto al objeto. Mejoras cómo funcionan las cosas con técnica, prototipo y curiosidad.',
+             soft:['Pensamiento funcional','Curiosidad técnica','Resolución de problemas'],
+             hard:['Prototipado','Procesos de manufactura','Modelado paramétrico'],
+             challenge:'Rediseña un objeto cotidiano para que sea más fácil de reparar.' },
+      COM: { title:'Comunicación Visual', narrative:'Conectas ideas y emociones con imágenes, tipografía y narrativa. Das forma a mensajes que viven.',
+             soft:['Pensamiento simbólico','Creatividad narrativa','Observación cultural'],
+             hard:['Tipografía','Ilustración/Dirección de arte','Branding digital'],
+             challenge:'Crea un afiche para una causa usando 2 tipografías y 2 colores.' }
+    };
+
+    // Estado
+    let idx = 0, flow = itemsCore.slice();
+    const answers = {}; let scores = {ARQ:0, INT:0, IND:0, COM:0};
+
+    // DOM (solo dentro del test)
+    const quiz = $('quiz'); const how = $('yqe-how'); const btnStart = $('btn-start');
+    const bar = $('bar'); const step = $('step'); const qtext = $('qtext');
+    const prev = $('prev'); const next = $('next'); const card = $('card');
+    const resultSec = $('result'); const rTitle = $('rTitle'); const rNarrative = $('rNarrative');
+    const rSoft = $('rSoft'); const rHard = $('rHard'); const rChallenge = $('rChallenge');
+    const rScores = $('rScores'); const btnPDF = $('btnPDF');
+    const leadModal = $('leadModal'); const leadForm = $('leadForm'); const leadEmail = $('leadEmail'); const leadCancel = $('leadCancel');
+
+    if (!btnStart || !quiz || !qtext || !prev || !next) { console.error('Faltan elementos críticos en el DOM del test.'); return; }
+
+    btnStart.addEventListener('click', () => {
+      idx = 0; flow = itemsCore.slice();
+      for (const k of Object.keys(answers)) delete answers[k];
+      scores = {ARQ:0, INT:0, IND:0, COM:0};
+      quiz.classList.remove('hidden'); if (how) how.scrollIntoView({behavior:'smooth'});
+      render();
+    });
+
+    const choices = Array.from(document.querySelectorAll('.yqe .choice'));
+    choices.forEach(btn => btn.addEventListener('click', (e)=>{
+      const v = Number(e.currentTarget.getAttribute('data-value'));
+      const id = flow[idx].id; answers[id] = v;
+      choices.forEach(c => c.classList.remove('sel')); e.currentTarget.classList.add('sel');
+    }));
+
+    next.addEventListener('click', ()=>{
+      if (answers[flow[idx].id] == null) { if(card){ card.style.animation='shake .35s linear 1'; setTimeout(()=> card.style.animation='', 360);} return; }
+      if (idx < flow.length-1) { idx++; render(); } else { finish(); }
+    });
+    prev.addEventListener('click', ()=>{ if(idx>0){ idx--; render(); } });
+
+    function render(){
+      const it = flow[idx]; if(!it){ finish(); return; }
+      if (qtext) qtext.textContent = it.text;
+      if (step) step.textContent = (idx+1)+'/'+flow.length;
+      if (bar) bar.style.width = (idx/flow.length*100)+'%';
+      if (prev) prev.disabled = idx===0;
+      if (next) next.textContent = idx===flow.length-1 ? 'Ver resultado' : 'Siguiente ▶';
+
+      // restaurar selección
+      choices.forEach(btn => btn.classList.remove('sel'));
+      const saved = answers[it.id];
+      if(saved!=null){
+        const btn = choices.find(b => Number(b.getAttribute('data-value'))===saved);
+        if(btn) btn.classList.add('sel');
+      } else if (it.binary){
+        choices[0].lastElementChild.textContent = 'No'; choices[0].firstElementChild.textContent = '🙅'; choices[0].setAttribute('data-value','0');
+        choices[1].lastElementChild.textContent = 'Sí'; choices[1].firstElementChild.textContent = '✅'; choices[1].setAttribute('data-value','3');
+        choices[2].style.display='none'; choices[3].style.display='none';
+      } else {
+        const labels = ['Nada','Poco','Bastante','Mucho']; const emojis = ['😶‍🌫️','🙂','🔥','🚀'];
+        for(let i=0;i<4;i++){ choices[i].style.display='flex'; choices[i].lastElementChild.textContent = labels[i]; choices[i].firstElementChild.textContent = emojis[i]; choices[i].setAttribute('data-value', String(i)); }
+      }
+    }
+
+    function scoreAll(){
+      scores = {ARQ:0, INT:0, IND:0, COM:0};
+      for(const it of flow){
+        const v = answers[it.id] ?? 0;
+        for(const k in it.weights){ scores[k] += v * it.weights[k]; }
+      }
+      return scores;
+    }
+
+    function maybeAppendTiebreaker(){
+      const s = scoreAll(); const arr = Object.entries(s).sort((a,b)=> b[1]-a[1]);
+      const diff = arr[0][1]-arr[1][1]; if (diff>=2) return false;
+      for(const tb of tiebreakers){
+        const set = new Set(tb.pair);
+        if(set.has(arr[0][0]) && set.has(arr[1][0]) && !flow.find(i=> i.id===tb.id)){
+          flow.push({ id:tb.id, text: tb.text + ' (Sí/No)', weights: {[tb.yes]:1}, binary:true }); return true;
+        }
+      }
+      return false;
+    }
+
+    function finish(){
+      if (maybeAppendTiebreaker()){ render(); return; }
+      scoreAll();
+      const sorted = Object.entries(scores).sort((a,b)=> b[1]-a[1]);
+      const key = sorted[0][0]; const data = RESULT_TEXT[key];
+      if (!data) { console.error('Resultado desconocido', key); return; }
+
+      if (resultSec) resultSec.classList.remove('hidden'); resultSec?.scrollIntoView({behavior:'smooth'});
+      $('rTitle').textContent = data.title; $('rNarrative').textContent = data.narrative;
+      $('rSoft').innerHTML = data.soft.map(x=>'<li>'+x+'</li>').join('');
+      $('rHard').innerHTML = data.hard.map(x=>'<li>'+x+'</li>').join('');
+      $('rChallenge').textContent = data.challenge;
+      $('rScores').innerHTML = sorted.map(([k,v])=>'<li><b>'+RESULT_TEXT[k].title+':</b> '+v.toFixed(1)+'</li>').join('');
+    }
+
+    // ===== Zero-backend: Formspree =====
+    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/xanpllkz';
+
+    function sendLead(email, resultKey, scores){
+      const payload = { email, result: resultKey, scores: JSON.stringify(scores) };
+      return fetch(FORMSPREE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(e => console.warn('No se pudo enviar a Formspree:', e));
+    }
+
+    if ($('btnPDF')) $('btnPDF').addEventListener('click', ()=> { $('leadModal')?.classList.add('show'); $('leadEmail')?.focus(); });
+    if ($('leadCancel')) $('leadCancel').addEventListener('click', ()=> $('leadModal')?.classList.remove('show'));
+    if ($('leadForm')) $('leadForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const email = $('leadEmail')?.value?.trim();
+      if(!email){ $('leadEmail')?.reportValidity(); return; }
+      const sorted = Object.entries(scores).sort((a,b)=> b[1]-a[1]);
+      const topKey = sorted[0][0];
+      await sendLead(email, topKey, scores);
+      $('leadModal')?.classList.remove('show');
+      window.print();
+    });
+  });
+  </script>
+
+  <!-- ===== Script del CHAT (como lo tenías) ===== -->
   <script>
   (function(){
     const SESSION_URL = "/api/chatkit/session";
@@ -70,7 +404,6 @@
       localStorage.setItem(key, deviceId);
     }
 
-    // HTTP helper: NO lanza excepción; retorna {ok:boolean, ...}
     async function postJSON(url, payload){
       const r = await fetch(url, {
         method: "POST",
@@ -83,7 +416,6 @@
       return Object.assign({ ok:true }, data);
     }
 
-    // Token efímero
     async function getClientSecret(current){
       const r = await fetch(SESSION_URL, {
         method: "POST",
@@ -98,7 +430,6 @@
       return j.client_secret;
     }
 
-    // “Todos son leads”: tras schedule_visit auto-crear lead calificado.
     async function autoCreateLeadFromVisit(clean, noteExtra){
       const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
       const payload = {
@@ -118,12 +449,10 @@
       return r.ok;
     }
 
-    // Devuelve SIEMPRE una cadena → evita crash del widget
     async function onClientTool({ name, params }) {
       const { tool, ...clean } = params || {};
 
       if (name === "create_lead") {
-        // Pre-validación (evita 400 y permite al modelo pedir el campo faltante)
         const missing = [];
         if (!clean.full_name)        missing.push("full_name");
         if (!clean.email)            missing.push("email");
@@ -141,22 +470,18 @@
       }
 
       if (name === "schedule_visit") {
-        // Pre-validación mínima
         if (!clean.modality) return "error:missing_modality";
         if (!clean.preferred_dt_local) return "error:missing_preferred_dt_local";
         if (!clean.contact?.name || !clean.contact?.email || !clean.contact?.phone) {
           return "error:missing_contact_fields";
         }
-        // 1) Registrar cita
         const resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean);
         const eid  = resp && resp.eventId ? ` (${resp.eventId})` : "";
 
         if (resp.ok) {
-          // 2) Auto-lead calificado
           await autoCreateLeadFromVisit(clean);
           return `schedule_visit: ok${eid}`;
         } else {
-          // Fallback: dejar lead para seguimiento manual
           await autoCreateLeadFromVisit(clean, "Registro automático falló; confirmar manual.");
           return `error:${resp.error||resp.status||"visit_failed"}`;
         }
@@ -204,7 +529,7 @@
         if (isOpen) { showShell(false); return; }
         if (!configured) { await ensureReady(); configured = true; }
         showShell(true);
-        if (MOBILE && !isOpen)
+        if (matchMedia("(max-width:480px)").matches && !isOpen)
           setTimeout(()=>{ if (shell.style.display !== "block") fab.classList.add("hidden"); }, 5000);
       } catch (e) {
         console.error("Error al iniciar el chat:", e);
@@ -214,9 +539,9 @@
 
     window.addEventListener("unhandledrejection", (e) => {
       console.error("ChatKit error:", e.reason);
-      // No alert agresivo aquí; el modelo puede recuperarse del string de error.
     });
   })();
   </script>
 </body>
 </html>
+
