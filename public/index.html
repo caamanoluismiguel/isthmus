@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Isthmus ·ADN Creativo</title>
+  <title>Isthmus · ADN CREATIVO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
   <!-- ChatKit runtime (no tocar) -->
@@ -109,14 +109,7 @@
   <section class="yqe" id="yqe-root" aria-label="Test YoQuieroEstudiar">
     <div class="wrap">
       <div class="sitebar">
-<div class="logo">
-  <div class="badge"></div>
-  <a href="#"
-     onclick="document.getElementById('chat-launcher')?.click();return false;"
-     style="text-decoration:underline;text-underline-offset:3px;font-weight:900">
-    ¿Listo? El chat está abajo a la derecha: agenda tu cita o pide más info →
-  </a>
-</div>
+        <div class="logo"><div class="badge"></div> YoQuiero<span style="color:#7cd4ff">Estudiar</span>.com</div>
       </div>
 
       <section class="hero">
@@ -183,6 +176,16 @@
               <div class="row-gap" style="margin-top:12px">
                 <button id="btnPDF" class="btn">Descargar perfil (PDF)</button>
               </div>
+
+              <!-- === CTA dentro del resultado (NUEVO) === -->
+              <div class="row-gap" style="margin-top:8px">
+                <button class="btn btn-primary" id="ctaChatResult">
+                  Hablar con un asesor ahora
+                </button>
+                <span class="note">¿Listo para el siguiente paso? El chat está abajo a la derecha ↘︎</span>
+              </div>
+              <!-- === /CTA === -->
+
               <details>
                 <summary>Ver resumen</summary>
                 <div class="row-gap" style="font-size:14px;margin-top:6px">
@@ -195,7 +198,7 @@
           <div id="leadModal" class="modal">
             <div class="modal-card">
               <h3 style="margin:0 0 6px;font-size:22px;font-weight:900">Antes de descargar tu perfil</h3>
-              <p style="margin:0 0 10px">Déjanos tu correo para registrar el resultado y luego descargar el PDF. Si quieres agendar una visita dale clic al botón verde en la esquina inferior derecha de esta página</p>
+              <p style="margin:0 0 10px">Déjanos tu correo para registrar el resultado y luego descargar el PDF.</p>
               <form id="leadForm">
                 <label for="leadEmail" style="font-weight:700;font-size:14px">Correo electrónico</label>
                 <input id="leadEmail" type="email" required placeholder="tucorreo@dominio.com" style="display:block;margin-top:6px;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px">
@@ -389,6 +392,13 @@
       $('leadModal')?.classList.remove('show');
       window.print();
     });
+
+    // === Listener del CTA dentro del resultado (NUEVO) ===
+    const btnAsesor = document.getElementById('ctaChatResult');
+    btnAsesor?.addEventListener('click', () => {
+      document.getElementById('chat-launcher')?.click();
+    });
+    // === /CTA ===
   });
   </script>
 
@@ -401,7 +411,6 @@
     const shell  = document.getElementById("chat-shell");
     const comp   = document.getElementById("isthmus-chat");
     const fab    = document.getElementById("chat-launcher");
-    const MOBILE = matchMedia("(max-width:480px)").matches;
 
     // ID estable por navegador
     const key = "ck_device_id";
@@ -411,6 +420,7 @@
       localStorage.setItem(key, deviceId);
     }
 
+    // HTTP helper
     async function postJSON(url, payload){
       const r = await fetch(url, {
         method: "POST",
@@ -423,6 +433,7 @@
       return Object.assign({ ok:true }, data);
     }
 
+    // Token efímero
     async function getClientSecret(current){
       const r = await fetch(SESSION_URL, {
         method: "POST",
@@ -437,6 +448,7 @@
       return j.client_secret;
     }
 
+    // “Todos son leads”: tras schedule_visit auto-crear lead calificado.
     async function autoCreateLeadFromVisit(clean, noteExtra){
       const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
       const payload = {
@@ -456,6 +468,7 @@
       return r.ok;
     }
 
+    // Manejador de herramientas del cliente
     async function onClientTool({ name, params }) {
       const { tool, ...clean } = params || {};
 
@@ -525,19 +538,19 @@
 
     function showShell(show){
       shell.style.display = show ? "block" : "none";
-      fab.classList.toggle("hidden", show);
-      fab.setAttribute("aria-expanded", String(show));
+      document.getElementById('chat-launcher').classList.toggle("hidden", show);
+      document.getElementById('chat-launcher').setAttribute("aria-expanded", String(show));
     }
 
     let configured = false;
-    fab.addEventListener("click", async () => {
+    document.getElementById('chat-launcher').addEventListener("click", async () => {
       try {
         const isOpen = shell.style.display === "block";
         if (isOpen) { showShell(false); return; }
         if (!configured) { await ensureReady(); configured = true; }
         showShell(true);
         if (matchMedia("(max-width:480px)").matches && !isOpen)
-          setTimeout(()=>{ if (shell.style.display !== "block") fab.classList.add("hidden"); }, 5000);
+          setTimeout(()=>{ if (shell.style.display !== "block") document.getElementById('chat-launcher').classList.add("hidden"); }, 5000);
       } catch (e) {
         console.error("Error al iniciar el chat:", e);
         alert("No pude iniciar el chat. Si usas bloqueadores, desactívalos para este sitio.");
@@ -551,4 +564,3 @@
   </script>
 </body>
 </html>
-
