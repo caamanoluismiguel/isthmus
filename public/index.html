@@ -5,232 +5,397 @@
   <title>Isthmus · ADN CREATIVO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-  <!-- ChatKit runtime (no tocar) -->
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
   <meta name="chatkit:domain_public_key" content="domain_pk_68e7da3b8b38819099c41f6a597d5cdf00560b7a3fd09ef4" />
 
-  <!-- ===== Estilos base del sitio / chat (mantengo los tuyos) ===== -->
   <style>
-    :root{ --fab:#0b5d3f; --gap:20px; --size:56px; --shadow:0 12px 30px rgba(0,0,0,.25); }
-    *{ box-sizing:border-box }
-    body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; background:#f6f8fb; color:#0f172a; }
+    /* VARIABLES DE DISEÑO */
+    :root {
+      --bg-app: #F5F5F7;        
+      --surface: #FFFFFF;       
+      --ink: #1D1D1F;           
+      --muted: #86868B;         
+      --accent: #0071E3;        
+      --accent-dark: #000000;   
+      
+      /* Chat Vars */
+      --fab: #1D1D1F; --gap: 20px; --size: 56px; --shadow: 0 12px 30px rgba(0,0,0,.15);
 
-    #chat-shell{
+      /* Typography & Physics */
+      --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, sans-serif;
+      --radius-panel: 32px;     
+      --radius-btn: 999px;      
+      --easing: cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+    
+    body { 
+      margin: 0; 
+      font-family: var(--font-stack);
+      background: var(--bg-app);
+      color: var(--ink);
+      line-height: 1.5;
+      overflow-x: hidden; 
+    }
+
+    /* --- CHATKIT STYLES --- */
+    #chat-shell {
       position: fixed; right: 20px; bottom: calc(var(--gap) + var(--size) + 12px);
       width: 360px; height: 600px; display: none;
-      background:#fff; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); z-index: 9998;
+      background: #fff; border-radius: 24px; overflow: hidden; 
+      box-shadow: 0 20px 80px rgba(0,0,0,0.2); z-index: 9998;
+      border: 1px solid rgba(0,0,0,0.05);
     }
-    #chat-launcher{
+    #chat-launcher {
       position: fixed; right: var(--gap); bottom: var(--gap);
       width: var(--size); height: var(--size); border-radius: 50%; border: none; cursor: pointer; z-index: 9999;
-      box-shadow: 0 6px 20px rgba(0,0,0,.25); background: var(--fab); color: #fff; font-size: 22px;
-      display: inline-flex; align-items: center; justify-content: center; transition: opacity .25s ease, transform .25s ease;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.2); background: var(--fab); color: #fff; font-size: 24px;
+      display: inline-flex; align-items: center; justify-content: center; 
+      transition: transform 0.4s var(--easing);
     }
-    #chat-launcher.hidden{ opacity: 0; pointer-events: none; transform: translateY(10px); }
-
+    #chat-launcher:hover { transform: scale(1.1); }
+    #chat-launcher.hidden { opacity: 0; pointer-events: none; transform: scale(0.5); }
     @media (max-width: 480px){
-      #chat-shell{ width: 100vw; height: 70vh; right: 0; left: 0; bottom: 0; border-radius: 12px 12px 0 0; }
-      #chat-launcher{ bottom: 28px; }
+      #chat-shell{ width: 100vw; height: 100dvh; right: 0; left: 0; bottom: 0; border-radius: 0; }
     }
 
-    header{ padding: 18px 20px; border-bottom: 1px solid #eef2f6; }
-    main{ padding: 0; }
-  </style>
-
-  <!-- ===== Estilos namespaced del TEST (no tocan <body>) ===== -->
-  <style>
-    .yqe { --bg1:#0f172a;--bg2:#020617;--brand:#1498ff;--pink:#ff3ea5;--green:#2ef2a6;--yellow:#ffd426;--card:rgba(255,255,255,.06);--cardb:rgba(255,255,255,.12);--text:#fff;--muted:rgba(255,255,255,.75);--ink:#0f172a;
-           color:var(--text);
-           background:
-             radial-gradient(1200px 600px at 10% -10%, rgba(255,62,165,.25), transparent 60%),
-             radial-gradient(1000px 500px at 90% 0%, rgba(46,242,166,.25), transparent 60%),
-             radial-gradient(900px 500px at 80% 100%, rgba(122,92,255,.25), transparent 60%),
-             linear-gradient(180deg,var(--bg1),var(--bg2));
+    /* --- HEADER --- */
+    header { 
+      padding: 24px 40px; 
+      position: absolute; top: 0; left: 0; width: 100%; z-index: 10;
+      display: flex; justify-content: space-between; align-items: baseline;
     }
-    .yqe a{color:inherit}
-    .yqe .wrap{min-height:100%;display:flex;flex-direction:column}
-    .yqe .sitebar{padding:16px 20px}
-    .yqe .logo{display:flex;gap:12px;align-items:center;font-weight:900;font-size:22px}
-    .yqe .badge{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,var(--pink),var(--brand));box-shadow:0 0 0 6px rgba(20,152,255,.12)}
-    .yqe .hero{padding:24px 20px;text-align:center}
-    .yqe .h1{font-size:clamp(40px,6vw,72px);line-height:1.02;font-weight:900;letter-spacing:-.02em}
-    .yqe .gradient{background:linear-gradient(90deg,var(--pink),var(--yellow),var(--green));-webkit-background-clip:text;background-clip:text;color:transparent}
-    .yqe .lead{max-width:900px;margin:10px auto 0;color:var(--muted);font-size:20px}
-    .yqe .cta-row{display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap}
-    .yqe .btn{border:0;padding:16px 22px;border-radius:18px;font-weight:800;cursor:pointer;font-size:18px;transition:transform .15s ease, box-shadow .15s ease, filter .15s ease}
-    .yqe .btn-primary{background:var(--brand);color:#fff;box-shadow:0 4px 0 rgba(0,0,0,.25), 0 0 0 6px rgba(20,152,255,.12)}
-    .yqe .btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 6px 0 rgba(0,0,0,.25), 0 0 0 6px rgba(20,152,255,.16)}
-    .yqe .btn-primary:active{transform:translateY(0);filter:brightness(0.98)}
-    .yqe .btn-primary:focus-visible{outline: none; box-shadow:0 0 0 4px rgba(255,212,38,.9), 0 0 0 10px rgba(20,152,255,.18);}
-    .yqe .btn-ghost{background:transparent;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
-    .yqe main{flex:1;padding:0 16px 80px}
-    .yqe .container{max-width:900px;margin:0 auto}
-    .yqe .hidden{display:none}
-    .yqe .card{background:var(--card);border:1px solid var(--cardb);border-radius:24px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-    .yqe .progress{height:12px;width:100%;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
-    .yqe .bar{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),var(--brand),var(--green))}
-    .yqe .grid{display:grid;gap:12px}
-    @media(min-width:720px){.yqe .grid-4{grid-template-columns:repeat(4,1fr)}}
-    @media(max-width:719.98px){.yqe .grid-4{grid-template-columns:repeat(2,1fr)}}
-    .yqe .choice{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border-radius:16px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.10);cursor:pointer}
-    .yqe .choice.sel{box-shadow:0 0 0 4px rgba(20,152,255,.45)}
-    .yqe .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-    .yqe .muted{color:var(--muted);font-size:14px}
-    .yqe .how{margin-top:36px;display:grid;gap:16px}
-    @media(min-width:900px){.yqe .how{grid-template-columns:repeat(3,1fr)}}
-    .yqe .card-white{background:#fff;color:var(--ink);border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.35);padding:22px}
-    .yqe .pill{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#475569;font-weight:700}
-    .yqe .title{font-weight:900;font-size:42px;margin:6px 0 0;letter-spacing:-.01em}
-    .yqe .list{margin:6px 0;padding-left:20px}.yqe .list li{margin:2px 0}
-    .yqe .row-gap{display:flex;gap:10px;flex-wrap:wrap}
-    .yqe .note{font-size:12px;color:#64748b}
-    .yqe details{margin-top:12px} .yqe summary{cursor:pointer;font-weight:700}
-    .yqe .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
-    .yqe .modal.show{display:flex}
-    .yqe .modal-card{background:#fff;color:#0f172a;max-width:520px;width:100%;border-radius:16px;padding:20px}
+    header h1 { 
+      margin: 0; font-size: 16px; letter-spacing: -0.02em; font-weight: 700; text-transform: uppercase; 
+    }
+    header p { font-size: 14px; color: var(--muted); margin: 0; font-weight: 500;}
 
-    /* Imprimir solo la tarjeta del resultado del test */
-    @media print{
-      body *{visibility:hidden !important}
-      .yqe #result-card, .yqe #result-card *{visibility:visible !important}
-      .yqe #result-card{position:absolute;inset:0;margin:0;box-shadow:none !important;background:#fff !important;color:#000 !important}
+    /* --- LAYOUT PRINCIPAL (YQE) --- */
+    .yqe {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      position: relative;
+    }
+    .yqe .wrap { 
+      width: 100%; max-width: 1000px; margin: 0 auto; 
+      padding: 100px 24px 60px; 
+      flex: 1; display: flex; flex-direction: column;
+    }
+
+    /* --- TYPOGRAPHY BIG (HERO) --- */
+    .yqe .hero { 
+      text-align: center; margin-bottom: 60px; 
+      animation: fadeUp 0.8s var(--easing);
+    }
+    .yqe .h1 {
+      font-size: clamp(3.5rem, 10vw, 7.5rem); 
+      line-height: 0.9;
+      font-weight: 800;
+      letter-spacing: -0.04em; 
+      color: var(--ink);
+      margin-bottom: 24px;
+    }
+    .yqe .gradient {
+      background: linear-gradient(135deg, #FF3EA5 0%, #7A5CFF 50%, #2EF2A6 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .yqe .lead {
+      font-size: clamp(1.1rem, 2vw, 1.5rem);
+      line-height: 1.4; color: var(--muted);
+      max-width: 580px; margin: 0 auto 40px; font-weight: 500;
+    }
+
+    /* --- BOTONES --- */
+    .yqe .btn {
+      appearance: none; border: none; cursor: pointer;
+      font-family: inherit; font-weight: 600; font-size: 17px;
+      padding: 18px 36px; border-radius: var(--radius-btn);
+      transition: all 0.3s var(--easing);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .yqe .btn-primary {
+      background: var(--accent-dark); color: #fff;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .yqe .btn-primary:hover {
+      transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .yqe .btn-ghost {
+      background: rgba(0,0,0,0.05); color: var(--ink);
+      margin-left: 12px;
+    }
+    .yqe .btn-ghost:hover { background: rgba(0,0,0,0.1); }
+    .yqe .cta-row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+    /* --- TARJETAS --- */
+    .yqe .container { width: 100%; max-width: 680px; margin: 0 auto; position: relative; }
+    
+    .yqe .card, .yqe .card-white {
+      background: var(--surface);
+      border-radius: var(--radius-panel);
+      padding: 40px;
+      box-shadow: 0 20px 60px -10px rgba(0,0,0,0.08);
+      border: 1px solid rgba(255,255,255,0.5);
+      backdrop-filter: blur(20px);
+    }
+
+    /* --- BARRA PROGRESO --- */
+    .yqe .progress {
+      height: 6px; width: 100%; background: rgba(0,0,0,0.06);
+      border-radius: 10px; overflow: hidden; margin-bottom: 40px;
+    }
+    .yqe .bar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #1d1d1f, #4a4a4f);
+      transition: width 0.5s var(--easing);
+    }
+    .yqe #step { 
+      text-align: center; font-size: 11px; font-weight: 700; 
+      letter-spacing: 0.1em; color: var(--muted); margin-top: 8px; text-transform: uppercase;
+    }
+
+    /* --- BENTO GRID --- */
+    .yqe .grid { display: grid; gap: 16px; margin-top: 32px; }
+    .yqe .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    @media(max-width: 600px) { .yqe .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+
+    .yqe .choice {
+      background: #F5F5F7; 
+      border: 2px solid transparent;
+      border-radius: 24px; 
+      padding: 20px 10px;
+      cursor: pointer;
+      transition: all 0.25s var(--easing);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+      aspect-ratio: 1 / 0.9;
+    }
+    .yqe .choice:hover { background: #EBEBF0; transform: scale(1.02); }
+    .yqe .choice.sel {
+      background: #fff;
+      border-color: var(--ink);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+    }
+    .yqe .choice div:first-child { font-size: 32px; line-height: 1; filter: grayscale(1); opacity: 0.7; transition: all .3s; }
+    .yqe .choice:hover div:first-child, .yqe .choice.sel div:first-child { filter: grayscale(0); opacity: 1; transform: scale(1.1); }
+    .yqe .choice div:last-child { font-weight: 600; font-size: 13px; color: var(--ink); }
+
+    /* --- RESULTADOS --- */
+    #qtext {
+      font-size: clamp(1.8rem, 3vw, 2.5rem);
+      font-weight: 700; letter-spacing: -0.03em; line-height: 1.1;
+      margin: 0 0 10px 0; text-align: center;
+      min-height: 3em; display: flex; align-items: center; justify-content: center;
+    }
+    .yqe .pill {
+      display: inline-block; padding: 6px 12px;
+      background: #F5F5F7; border-radius: 8px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .yqe .title {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      line-height: 1; font-weight: 800; letter-spacing: -0.03em;
+      margin: 10px 0 20px;
+    }
+    .yqe ul.list { list-style: none; padding: 0; }
+    .yqe ul.list li {
+      padding: 10px 0; border-bottom: 1px solid #F5F5F7;
+      font-weight: 500; font-size: 15px; color: var(--ink);
+    }
+    .yqe .row-gap { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+    
+    /* --- HOW SECTION --- */
+    .yqe .how { display: grid; gap: 20px; margin-top: 60px; }
+    @media(min-width: 800px){ .yqe .how { grid-template-columns: repeat(3, 1fr); } }
+    .yqe .how .card { padding: 30px; text-align: left; border: none; background: #fff; }
+    .yqe .how h3 { margin: 15px 0 5px; font-size: 18px; font-weight: 700; }
+    .yqe .how p { margin: 0; font-size: 14px; color: var(--muted); }
+
+    /* --- MODAL --- */
+    .yqe .modal {
+      position: fixed; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(10px);
+      display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+    }
+    .yqe .modal.show { display: flex; animation: fadeIn 0.3s; }
+    .yqe .modal-card {
+      background: #fff; color: var(--ink); max-width: 480px; width: 100%;
+      border-radius: 32px; padding: 40px;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.05);
+    }
+    .yqe input {
+      width: 100%; padding: 16px; border-radius: 12px; border: 2px solid #F5F5F7;
+      font-size: 16px; margin-top: 10px; outline: none; transition: border 0.3s;
+    }
+    .yqe input:focus { border-color: var(--ink); }
+
+    .hidden { display: none !important; }
+    .muted { color: var(--muted); }
+    .note { font-size: 12px; color: var(--muted); display: block; margin-top: 8px; }
+    
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* --- IMPRESIÓN CORREGIDA (HIGH CONTRAST) --- */
+    @media print {
+      body > *, #chat-shell, #chat-launcher, header { display: none !important; }
+      body > .yqe { display: block !important; background: white !important; }
+      .yqe .wrap { padding: 0 !important; margin: 0 !important; }
+      .yqe .container { max-width: 100% !important; margin: 0 !important; }
+      .yqe main { padding: 0 !important; }
+      .hero, #quiz, #yqe-how, .modal, .note, .cta-row { display: none !important; }
+
+      /* Tarjeta de resultado en papel */
+      #result, #result-card {
+        display: block !important;
+        visibility: visible !important;
+        position: static !important;
+        background: white !important;
+        color: black !important;
+        box-shadow: none !important;
+        border: 2px solid #000 !important; /* BORDE VISIBLE */
+        border-radius: 0 !important;
+        width: 100% !important;
+        padding: 40px !important;
+        margin: 0 !important;
+      }
+      .yqe .title, .yqe h4, .yqe p, .yqe li, .yqe h2 { color: #000 !important; -webkit-text-fill-color: #000 !important; }
+      .yqe .pill { border: 1px solid #000 !important; color: #000 !important; background: transparent !important; }
+      .yqe .btn, .yqe details, .yqe summary { display: none !important; }
+      #rScores { display: block !important; border-top: 1px dashed #000; margin-top: 20px; padding-top: 10px; }
+      #rScores li { font-size: 10px !important; }
     }
   </style>
 </head>
 
 <body>
-  <!-- Header del sitio (ligero) -->
   <header>
-    <h1 style="margin:0">ISTHMUS</h1>
-    <p style="margin:4px 0 12px">Test ADN Creativo</p>
+    <h1>Isthmus</h1>
+    <p>Test ADN Creativo</p>
   </header>
 
-  <!-- ====== TEST YoQuieroEstudiar (namespaced) ====== -->
-  <section class="yqe" id="yqe-root" aria-label="Test YoQuieroEstudiar">
+  <section class="yqe" id="yqe-root">
     <div class="wrap">
-      <div class="sitebar">
-       
-      </div>
-
+      
       <section class="hero">
-        <div class="h1">Descubre tu <span class="gradient">ADN creativo</span></div>
-        <p class="lead">Responde en minutos y descubre tu match creativo. Al final te llevas tu perfil en PDF.</p>
+        <div class="h1">Descubre tu <br><span class="gradient">ADN Creativo</span></div>
+        <p class="lead">Responde en minutos y descubre tu match profesional. Al final, obtén tu perfil detallado en PDF.</p>
         <div class="cta-row">
-          <button id="btn-start" class="btn btn-primary" style="padding:18px 28px;font-size:20px;border-radius:22px">Empezar ahora — 3–5 min</button>
+          <button id="btn-start" class="btn btn-primary">Empezar Test</button>
           <button class="btn btn-ghost" onclick="document.getElementById('yqe-how').scrollIntoView({behavior:'smooth'})">¿Cómo funciona?</button>
         </div>
       </section>
 
       <main>
         <div class="container">
+          
           <div id="quiz" class="hidden">
-            <div style="position:sticky;top:0;backdrop-filter:blur(8px);padding:12px 0;margin-bottom:8px">
-              <div class="row">
-                <div class="progress"><div id="bar" class="bar"></div></div>
-                <div id="step" class="muted">1/12</div>
-              </div>
+            <div style="margin-bottom: 20px;">
+              <div class="progress"><div id="bar" class="bar"></div></div>
+              <div id="step">1/12</div>
             </div>
 
             <div id="card" class="card">
-              <div class="muted">Pregunta</div>
-              <h2 id="qtext" style="font-size:28px;margin:4px 0 12px">...</h2>
+              <div class="pill" style="display:block; text-align:center;">Pregunta</div>
+              <h2 id="qtext">...</h2>
               <div class="grid grid-4">
-                <button class="choice" data-value="0"><div style="font-size:28px">😶‍🌫️</div><div>Nada</div></button>
-                <button class="choice" data-value="1"><div style="font-size:28px">🙂</div><div>Poco</div></button>
-                <button class="choice" data-value="2"><div style="font-size:28px">🔥</div><div>Bastante</div></button>
-                <button class="choice" data-value="3"><div style="font-size:28px">🚀</div><div>Mucho</div></button>
+                <button class="choice" data-value="0"><div>😶‍🌫️</div><div>Nada</div></button>
+                <button class="choice" data-value="1"><div>🙂</div><div>Poco</div></button>
+                <button class="choice" data-value="2"><div>🔥</div><div>Bastante</div></button>
+                <button class="choice" data-value="3"><div>🚀</div><div>Mucho</div></button>
               </div>
-              <div class="row" style="margin-top:14px">
-                <button id="prev" class="btn" disabled>◀ Anterior</button>
-                <button id="next" class="btn btn-primary" style="padding:14px 22px">Siguiente ▶</button>
+              <div class="row-gap" style="justify-content: space-between; margin-top: 40px;">
+                <button id="prev" class="btn btn-ghost" style="font-size:14px;" disabled>Atrás</button>
+                <button id="next" class="btn btn-primary" style="padding: 14px 28px;">Siguiente</button>
               </div>
             </div>
-            <div class="muted" style="text-align:center;margin-top:8px">No es un diagnóstico, es una brújula para conversar.</div>
+            <div class="muted" style="text-align:center; margin-top:20px; font-size:13px;">No es un examen, sigue tu instinto visual.</div>
           </div>
 
           <section id="yqe-how" class="how">
-            <div class="card"><div style="font-size:28px">⚡</div><h3>Rápido y visual</h3><p class="muted">Solo 12 preguntas (y 2 extra si hay empate). Terminas en 3–5 min.</p></div>
-            <div class="card"><div style="font-size:28px">🧠</div><h3>Habilidades reales</h3><p class="muted">Soft + hard skills que verás en clase: ARQ, Interior, Industrial y Comunicación Visual.</p></div>
-            <div class="card"><div style="font-size:28px">🎯</div><h3>Resultado útil</h3><p class="muted">Tu carrera sugerida, un mini-reto semanal y un PDF para compartir.</p></div>
+            <div class="card">
+              <div style="font-size:32px; margin-bottom:12px;">⚡</div>
+              <h3>Rápido y visual</h3><p>Solo 12 preguntas (y 2 extra si hay empate). Terminas en 3–5 min.</p>
+            </div>
+            <div class="card">
+              <div style="font-size:32px; margin-bottom:12px;">🧠</div>
+              <h3>Habilidades reales</h3><p>Soft + hard skills que verás en clase: ARQ, Interior, Industrial y Comunicación.</p>
+            </div>
+            <div class="card">
+              <div style="font-size:32px; margin-bottom:12px;">🎯</div>
+              <h3>Resultado útil</h3><p>Tu carrera sugerida, un mini-reto semanal y un PDF para compartir.</p>
+            </div>
           </section>
 
           <section id="result" class="hidden" style="margin-top:24px">
             <div id="result-card" class="card-white">
               <div class="pill">Tu afinidad creativa</div>
               <div id="rTitle" class="title">—</div>
-              <p id="rNarrative" style="font-size:18px;margin:8px 0"></p>
-              <div class="row-gap">
-                <div style="flex:1;min-width:260px">
-                  <h4>Soft skills que destacas</h4>
+              <p id="rNarrative" style="font-size:18px; margin:8px 0 32px; color:var(--muted); line-height:1.6;"></p>
+              
+              <div class="row-gap" style="align-items:flex-start;">
+                <div style="flex:1; min-width:260px;">
+                  <h4 style="margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:0.1em;">Tus Soft Skills</h4>
                   <ul id="rSoft" class="list"></ul>
                 </div>
-                <div style="flex:1;min-width:260px">
-                  <h4>Hard skills a desarrollar</h4>
+                <div style="flex:1; min-width:260px;">
+                  <h4 style="margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:0.1em;">Tus Hard Skills</h4>
                   <ul id="rHard" class="list"></ul>
                 </div>
               </div>
-              <div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:12px">
-                <div class="pill" style="color:#475569">Mini-reto para esta semana</div>
-                <p id="rChallenge" style="margin:6px 0 0"></p>
-              </div>
-              <div class="row-gap" style="margin-top:12px">
-                <button id="btnPDF" class="btn">Descargar perfil (PDF)</button>
+
+              <div style="margin-top:32px; background:#F5F5F7; border-radius:20px; padding:24px;">
+                <div class="pill" style="background:#fff;">Mini-reto semanal</div>
+                <p id="rChallenge" style="margin:10px 0 0; font-weight:600; font-size:16px;"></p>
               </div>
 
-              <!-- === CTA dentro del resultado (NUEVO) === -->
-              <div class="row-gap" style="margin-top:8px">
-                <button class="btn btn-primary" id="ctaChatResult">
-                  Hablar con un asesor ahora
-                </button>
-                <span class="note">¿Listo para el siguiente paso? El chat está abajo a la derecha ↘︎</span>
+              <div class="row-gap" style="margin-top:32px; border-top:1px solid #F5F5F7; padding-top:24px;">
+                <button id="btnPDF" class="btn" style="background:#1d1d1f; color:#fff;">Descargar PDF</button>
               </div>
-              <!-- === /CTA === -->
-
-              <details>
-                <summary>Ver resumen</summary>
-                <div class="row-gap" style="font-size:14px;margin-top:6px">
-                  <div><div class="note">Puntajes</div><ul id="rScores" style="margin:6px 0"></ul></div>
-                </div>
+              <div class="row-gap" style="margin-top:16px">
+                <button class="btn btn-primary" id="ctaChatResult" style="width:100%; background:var(--accent);">Hablar con un asesor ahora</button>
+                <span class="note" style="width:100%; text-align:center;">El chat está abajo a la derecha ↘︎</span>
+              </div>
+              <details style="margin-top:24px; cursor:pointer;">
+                <summary style="font-size:13px; color:var(--muted);">Ver desglose de puntajes</summary>
+                <ul id="rScores" style="margin:10px 0; font-size:13px; color:var(--muted); list-style:none; padding:0;"></ul>
               </details>
             </div>
           </section>
 
           <div id="leadModal" class="modal">
             <div class="modal-card">
-              <h3 style="margin:0 0 6px;font-size:22px;font-weight:900">Antes de descargar tu perfil</h3>
-              <p style="margin:0 0 10px">Déjanos tu correo para registrar el resultado y luego descargar el PDF.</p>
+              <h3 style="margin:0 0 10px; font-size:28px; font-weight:800;">Tu perfil está listo</h3>
+              <p style="margin:0 0 20px; color:var(--muted);">Ingresa tu correo para generar y descargar tu PDF personalizado.</p>
               <form id="leadForm">
-                <label for="leadEmail" style="font-weight:700;font-size:14px">Correo electrónico</label>
-                <input id="leadEmail" type="email" required placeholder="tucorreo@dominio.com" style="display:block;margin-top:6px;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px">
-                <small class="note">Se almacena en un inbox seguro (Formspree).</small>
-                <div class="row" style="margin-top:12px">
-                  <button type="submit" class="btn btn-primary">Enviar y descargar</button>
-                  <button type="button" id="leadCancel" class="btn">Cancelar</button>
+                <label for="leadEmail" style="font-weight:700; font-size:12px; text-transform:uppercase;">Correo electrónico</label>
+                <input id="leadEmail" type="email" required placeholder="nombre@ejemplo.com">
+                <small class="note">Te enviaremos una copia. No spam.</small>
+                <div class="row-gap" style="margin-top:24px">
+                  <button type="submit" class="btn btn-primary" style="flex:1;">Descargar</button>
+                  <button type="button" id="leadCancel" class="btn btn-ghost" style="flex:0;">Cancelar</button>
                 </div>
               </form>
             </div>
           </div>
 
-          <p class="note" style="margin:18px 0 0">Zero-backend listo. © <span id="year">2025</span></p>
+          <p class="note" style="text-align:center; margin-top:60px;">Isthmus Zero-Backend. © <span id="year">2025</span></p>
         </div>
       </main>
     </div>
   </section>
 
-  <!-- ====== Contenedor del chat (no tocar) ====== -->
   <div id="chat-shell" role="dialog" aria-modal="true">
     <openai-chatkit id="isthmus-chat" class="h-[600px] w-[360px]"></openai-chatkit>
   </div>
   <button id="chat-launcher" aria-label="Abrir chat" aria-controls="chat-shell" aria-expanded="false">💬</button>
 
-  <!-- ===== Script del TEST (aislado y sin globals peligrosos) ===== -->
   <script>
   document.addEventListener('DOMContentLoaded', () => {
     const $ = (id) => document.getElementById(id);
     const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
     setText('year', String(new Date().getFullYear()));
 
-    // Banco de preguntas + pesos
     const itemsCore = [
       { id:1,  text:'Puedo imaginar cómo cambiaría un lugar con luz y materiales.', weights:{INT:1, ARQ:0.5} },
       { id:2,  text:'Me interesa cómo se planean ciudades/edificios y sus reglas.', weights:{ARQ:1} },
@@ -254,29 +419,15 @@
     ];
 
     const RESULT_TEXT = {
-      ARQ: { title:'Arquitectura', narrative:'Piensas en sistemas, escalas y orden. Te motiva transformar ciudad y edificio con visión y método.',
-             soft:['Pensamiento sistémico','Visualización espacial','Liderazgo de proyectos'],
-             hard:['Dibujo técnico','Modelado 3D','Planeación urbana'],
-             challenge:'Dibuja un mapa de flujo de tu barrio y propone una mejora.' },
-      INT: { title:'Arquitectura Interior', narrative:'Lees la atmósfera: luz, materiales y experiencia humana. Haces que los lugares se sientan bien.',
-             soft:['Empatía','Sensibilidad estética','Atención al detalle'],
-             hard:['Iluminación','Materialidad y acabados','Representación visual'],
-             challenge:'Diseña 2 escenas de luz (día/noche) para una habitación.' },
-      IND: { title:'Diseño Industrial', narrative:'Del concepto al objeto. Mejoras cómo funcionan las cosas con técnica, prototipo y curiosidad.',
-             soft:['Pensamiento funcional','Curiosidad técnica','Resolución de problemas'],
-             hard:['Prototipado','Procesos de manufactura','Modelado paramétrico'],
-             challenge:'Rediseña un objeto cotidiano para que sea más fácil de reparar.' },
-      COM: { title:'Comunicación Visual', narrative:'Conectas ideas y emociones con imágenes, tipografía y narrativa. Das forma a mensajes que viven.',
-             soft:['Pensamiento simbólico','Creatividad narrativa','Observación cultural'],
-             hard:['Tipografía','Ilustración/Dirección de arte','Branding digital'],
-             challenge:'Crea un afiche para una causa usando 2 tipografías y 2 colores.' }
+      ARQ: { title:'Arquitectura', narrative:'Piensas en sistemas, escalas y orden. Te motiva transformar ciudad y edificio con visión y método.', soft:['Pensamiento sistémico','Visualización espacial','Liderazgo de proyectos'], hard:['Dibujo técnico','Modelado 3D','Planeación urbana'], challenge:'Dibuja un mapa de flujo de tu barrio y propone una mejora.' },
+      INT: { title:'Arquitectura Interior', narrative:'Lees la atmósfera: luz, materiales y experiencia humana. Haces que los lugares se sientan bien.', soft:['Empatía','Sensibilidad estética','Atención al detalle'], hard:['Iluminación','Materialidad y acabados','Representación visual'], challenge:'Diseña 2 escenas de luz (día/noche) para una habitación.' },
+      IND: { title:'Diseño Industrial', narrative:'Del concepto al objeto. Mejoras cómo funcionan las cosas con técnica, prototipo y curiosidad.', soft:['Pensamiento funcional','Curiosidad técnica','Resolución de problemas'], hard:['Prototipado','Procesos de manufactura','Modelado paramétrico'], challenge:'Rediseña un objeto cotidiano para que sea más fácil de reparar.' },
+      COM: { title:'Comunicación Visual', narrative:'Conectas ideas y emociones con imágenes, tipografía y narrativa. Das forma a mensajes que viven.', soft:['Pensamiento simbólico','Creatividad narrativa','Observación cultural'], hard:['Tipografía','Ilustración/Dirección de arte','Branding digital'], challenge:'Crea un afiche para una causa usando 2 tipografías y 2 colores.' }
     };
 
-    // Estado
     let idx = 0, flow = itemsCore.slice();
     const answers = {}; let scores = {ARQ:0, INT:0, IND:0, COM:0};
 
-    // DOM (solo dentro del test)
     const quiz = $('quiz'); const how = $('yqe-how'); const btnStart = $('btn-start');
     const bar = $('bar'); const step = $('step'); const qtext = $('qtext');
     const prev = $('prev'); const next = $('next'); const card = $('card');
@@ -285,13 +436,15 @@
     const rScores = $('rScores'); const btnPDF = $('btnPDF');
     const leadModal = $('leadModal'); const leadForm = $('leadForm'); const leadEmail = $('leadEmail'); const leadCancel = $('leadCancel');
 
-    if (!btnStart || !quiz || !qtext || !prev || !next) { console.error('Faltan elementos críticos en el DOM del test.'); return; }
+    if (!btnStart || !quiz || !qtext || !prev || !next) { console.error('Error DOM'); return; }
 
     btnStart.addEventListener('click', () => {
       idx = 0; flow = itemsCore.slice();
       for (const k of Object.keys(answers)) delete answers[k];
       scores = {ARQ:0, INT:0, IND:0, COM:0};
-      quiz.classList.remove('hidden'); if (how) how.scrollIntoView({behavior:'smooth'});
+      quiz.classList.remove('hidden'); 
+      if (how) how.style.display = 'none'; 
+      $('yqe-root').scrollIntoView({behavior:'smooth'}); 
       render();
     });
 
@@ -314,9 +467,8 @@
       if (step) step.textContent = (idx+1)+'/'+flow.length;
       if (bar) bar.style.width = (idx/flow.length*100)+'%';
       if (prev) prev.disabled = idx===0;
-      if (next) next.textContent = idx===flow.length-1 ? 'Ver resultado' : 'Siguiente ▶';
+      if (next) next.textContent = idx===flow.length-1 ? 'Ver resultado' : 'Siguiente';
 
-      // restaurar selección
       choices.forEach(btn => btn.classList.remove('sel'));
       const saved = answers[it.id];
       if(saved!=null){
@@ -326,8 +478,12 @@
         choices[0].lastElementChild.textContent = 'No'; choices[0].firstElementChild.textContent = '🙅'; choices[0].setAttribute('data-value','0');
         choices[1].lastElementChild.textContent = 'Sí'; choices[1].firstElementChild.textContent = '✅'; choices[1].setAttribute('data-value','3');
         choices[2].style.display='none'; choices[3].style.display='none';
+        choices[0].parentElement.classList.replace('grid-4','grid-2');
+        choices[0].parentElement.style.gridTemplateColumns = '1fr 1fr';
       } else {
         const labels = ['Nada','Poco','Bastante','Mucho']; const emojis = ['😶‍🌫️','🙂','🔥','🚀'];
+        choices[0].parentElement.classList.replace('grid-2','grid-4');
+        choices[0].parentElement.style.gridTemplateColumns = '';
         for(let i=0;i<4;i++){ choices[i].style.display='flex'; choices[i].lastElementChild.textContent = labels[i]; choices[i].firstElementChild.textContent = emojis[i]; choices[i].setAttribute('data-value', String(i)); }
       }
     }
@@ -358,8 +514,9 @@
       scoreAll();
       const sorted = Object.entries(scores).sort((a,b)=> b[1]-a[1]);
       const key = sorted[0][0]; const data = RESULT_TEXT[key];
-      if (!data) { console.error('Resultado desconocido', key); return; }
+      if (!data) return;
 
+      quiz.classList.add('hidden'); 
       if (resultSec) resultSec.classList.remove('hidden'); resultSec?.scrollIntoView({behavior:'smooth'});
       $('rTitle').textContent = data.title; $('rNarrative').textContent = data.narrative;
       $('rSoft').innerHTML = data.soft.map(x=>'<li>'+x+'</li>').join('');
@@ -368,16 +525,13 @@
       $('rScores').innerHTML = sorted.map(([k,v])=>'<li><b>'+RESULT_TEXT[k].title+':</b> '+v.toFixed(1)+'</li>').join('');
     }
 
-    // ===== Zero-backend: Formspree =====
     const FORMSPREE_ENDPOINT = 'https://formspree.io/f/xanpllkz';
-
     function sendLead(email, resultKey, scores){
       const payload = { email, result: resultKey, scores: JSON.stringify(scores) };
       return fetch(FORMSPREE_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type':'application/json' },
+        method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type':'application/json' },
         body: JSON.stringify(payload)
-      }).catch(e => console.warn('No se pudo enviar a Formspree:', e));
+      }).catch(e => console.warn('Error Formspree:', e));
     }
 
     if ($('btnPDF')) $('btnPDF').addEventListener('click', ()=> { $('leadModal')?.classList.add('show'); $('leadEmail')?.focus(); });
@@ -393,173 +547,28 @@
       window.print();
     });
 
-    // === Listener del CTA dentro del resultado (NUEVO) ===
     const btnAsesor = document.getElementById('ctaChatResult');
-    btnAsesor?.addEventListener('click', () => {
-      document.getElementById('chat-launcher')?.click();
-    });
-    // === /CTA ===
+    btnAsesor?.addEventListener('click', () => { document.getElementById('chat-launcher')?.click(); });
   });
   </script>
 
-  <!-- ===== Script del CHAT (como lo tenías) ===== -->
   <script>
   (function(){
     const SESSION_URL = "/api/chatkit/session";
     const TOOLS_BASE  = "/tools";
-
     const shell  = document.getElementById("chat-shell");
     const comp   = document.getElementById("isthmus-chat");
-    const fab    = document.getElementById("chat-launcher");
-
-    // ID estable por navegador
     const key = "ck_device_id";
     let deviceId = localStorage.getItem(key);
-    if (!deviceId) {
-      deviceId = (self.crypto?.randomUUID && crypto.randomUUID()) || String(Date.now());
-      localStorage.setItem(key, deviceId);
-    }
-
-    // HTTP helper
-    async function postJSON(url, payload){
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      let data = {};
-      try { data = await r.json(); } catch {}
-      if (!r.ok) return Object.assign({ ok:false }, data, { status:r.status });
-      return Object.assign({ ok:true }, data);
-    }
-
-    // Token efímero
-    async function getClientSecret(current){
-      const r = await fetch(SESSION_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: deviceId, currentClientSecret: current || null })
-      });
-      if (!r.ok) {
-        const txt = await r.text().catch(()=> "");
-        throw new Error("session "+r.status+": "+txt);
-      }
-      const j = await r.json();
-      return j.client_secret;
-    }
-
-    // “Todos son leads”: tras schedule_visit auto-crear lead calificado.
-    async function autoCreateLeadFromVisit(clean, noteExtra){
-      const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
-      const payload = {
-        full_name: clean?.contact?.name || "Sin nombre",
-        email:     clean?.contact?.email || "",
-        phone:     clean?.contact?.phone || "",
-        program_interest: clean?.program_interest || "no_especificado",
-        language: lang,
-        source_channel: "web",
-        consent_personal_data: "yes",
-        privacy_ack: "yes",
-        costs_email_requested: "no",
-        notes: `Lead auto-creado por cita (visit_qualified). ${noteExtra||""}`.trim()
-      };
-      const r = await postJSON(TOOLS_BASE + "/create_lead", payload);
-      if (!r.ok) console.warn("auto-create_lead failed:", r);
-      return r.ok;
-    }
-
-    // Manejador de herramientas del cliente
-    async function onClientTool({ name, params }) {
-      const { tool, ...clean } = params || {};
-
-      if (name === "create_lead") {
-        const missing = [];
-        if (!clean.full_name)        missing.push("full_name");
-        if (!clean.email)            missing.push("email");
-        if (!clean.phone)            missing.push("phone");
-        if (!clean.program_interest) missing.push("program_interest");
-        if (!clean.consent_personal_data) missing.push("consent_personal_data");
-        if (!clean.privacy_ack)          missing.push("privacy_ack");
-        if (!clean.language)             missing.push("language");
-        if (!clean.source_channel)       missing.push("source_channel");
-        if (!clean.costs_email_requested) missing.push("costs_email_requested");
-        if (missing.length) return `error:missing_${missing[0]}`;
-
-        const resp = await postJSON(TOOLS_BASE + "/create_lead", clean);
-        return resp.ok ? "create_lead: ok" : `error:${resp.error||resp.status||"lead_failed"}`;
-      }
-
-      if (name === "schedule_visit") {
-        if (!clean.modality) return "error:missing_modality";
-        if (!clean.preferred_dt_local) return "error:missing_preferred_dt_local";
-        if (!clean.contact?.name || !clean.contact?.email || !clean.contact?.phone) {
-          return "error:missing_contact_fields";
-        }
-        const resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean);
-        const eid  = resp && resp.eventId ? ` (${resp.eventId})` : "";
-
-        if (resp.ok) {
-          await autoCreateLeadFromVisit(clean);
-          return `schedule_visit: ok${eid}`;
-        } else {
-          await autoCreateLeadFromVisit(clean, "Registro automático falló; confirmar manual.");
-          return `error:${resp.error||resp.status||"visit_failed"}`;
-        }
-      }
-
-      return "error:tool_not_implemented";
-    }
-
-    async function ensureReady(){
-      if (!customElements.get("openai-chatkit")) {
-        await customElements.whenDefined("openai-chatkit");
-      }
-      comp.setOptions({
-        api: { getClientSecret },
-        onClientTool,
-        locale: "es",
-        composer: { placeholder: "Pregúntame por programas, requisitos o agenda una visita…" },
-        startScreen: {
-          greeting: "¡Hola! Soy el asesor virtual de Admisiones de ISTHMUS. ¿Cómo te llamas?",
-          prompts: [
-            { label: "Conocer nuestros programas", prompt: "Quiero información sobre los programas que hay en la universidad.", icon: "search" },
-            { label: "Costos por correo",    prompt: "Envíenme los costos por correo, por favor.",       icon: "write"  },
-            { label: "Agendar visita",       prompt: "Quiero agendar una visita al campus.",             icon: "calendar" }
-          ]
-        },
-        theme: {
-          colorScheme: "light",
-          color: { accent: { primary: "#0b5d3f", level: 2 } },
-          radius: "round",
-          density: "normal"
-        }
-      });
-    }
-
-    function showShell(show){
-      shell.style.display = show ? "block" : "none";
-      document.getElementById('chat-launcher').classList.toggle("hidden", show);
-      document.getElementById('chat-launcher').setAttribute("aria-expanded", String(show));
-    }
-
+    if (!deviceId) { deviceId = (self.crypto?.randomUUID && crypto.randomUUID()) || String(Date.now()); localStorage.setItem(key, deviceId); }
+    async function postJSON(url, payload){ const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); let data = {}; try { data = await r.json(); } catch {} if (!r.ok) return Object.assign({ ok:false }, data, { status:r.status }); return Object.assign({ ok:true }, data); }
+    async function getClientSecret(current){ const r = await fetch(SESSION_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: deviceId, currentClientSecret: current || null }) }); if (!r.ok) throw new Error("session "+r.status); const j = await r.json(); return j.client_secret; }
+    async function autoCreateLeadFromVisit(clean, noteExtra){ const lang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en"; const payload = { full_name: clean?.contact?.name || "Sin nombre", email: clean?.contact?.email || "", phone: clean?.contact?.phone || "", program_interest: clean?.program_interest || "no_especificado", language: lang, source_channel: "web", consent_personal_data: "yes", privacy_ack: "yes", costs_email_requested: "no", notes: `Lead auto-creado por cita. ${noteExtra||""}`.trim() }; await postJSON(TOOLS_BASE + "/create_lead", payload); return true; }
+    async function onClientTool({ name, params }) { const { tool, ...clean } = params || {}; if (name === "create_lead") { if (!clean.email) return "error:missing_email"; const resp = await postJSON(TOOLS_BASE + "/create_lead", clean); return resp.ok ? "create_lead: ok" : "error:lead_failed"; } if (name === "schedule_visit") { if (!clean.contact?.email) return "error:missing_contact"; const resp = await postJSON(TOOLS_BASE + "/schedule_visit", clean); if (resp.ok) { await autoCreateLeadFromVisit(clean); return "schedule_visit: ok"; } return "error:visit_failed"; } return "error:tool_not_implemented"; }
+    async function ensureReady(){ if (!customElements.get("openai-chatkit")) await customElements.whenDefined("openai-chatkit"); comp.setOptions({ api: { getClientSecret }, onClientTool, locale: "es", composer: { placeholder: "Pregúntame por programas..." }, startScreen: { greeting: "¡Hola! Soy el asesor de ISTHMUS.", prompts: [ { label: "Conocer programas", prompt: "Info programas", icon: "search" }, { label: "Agendar visita", prompt: "Quiero agendar visita", icon: "calendar" } ] } }); }
+    function showShell(show){ shell.style.display = show ? "block" : "none"; document.getElementById('chat-launcher').classList.toggle("hidden", show); }
     let configured = false;
-    document.getElementById('chat-launcher').addEventListener("click", async () => {
-      try {
-        const isOpen = shell.style.display === "block";
-        if (isOpen) { showShell(false); return; }
-        if (!configured) { await ensureReady(); configured = true; }
-        showShell(true);
-        if (matchMedia("(max-width:480px)").matches && !isOpen)
-          setTimeout(()=>{ if (shell.style.display !== "block") document.getElementById('chat-launcher').classList.add("hidden"); }, 5000);
-      } catch (e) {
-        console.error("Error al iniciar el chat:", e);
-        alert("No pude iniciar el chat. Si usas bloqueadores, desactívalos para este sitio.");
-      }
-    });
-
-    window.addEventListener("unhandledrejection", (e) => {
-      console.error("ChatKit error:", e.reason);
-    });
+    document.getElementById('chat-launcher').addEventListener("click", async () => { try { if (shell.style.display === "block") { showShell(false); return; } if (!configured) { await ensureReady(); configured = true; } showShell(true); } catch (e) { console.error(e); } });
   })();
   </script>
 </body>
